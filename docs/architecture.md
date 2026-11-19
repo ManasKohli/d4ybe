@@ -19,6 +19,23 @@ Fixed constraints from the founders and the team:
 | D3 | Hardship-seat applications run off-platform (a form). An admin grants an approved seat with `POST /admin/enrollments` (`source = hardship`). No hardship tables in the pilot. | A |
 | D4 | No scheduled jobs in the pilot. Review escalation is computed when pages load (FE `features/admin/reviewAge.ts`). No Cloud Scheduler, no `/internal/jobs`. | A |
 | D5 | Folder structure: feature modules with four layers (routes, service, repository, schemas). | A |
+| D25 | **Lesson videos are hosted on a video platform, not in Supabase Storage.** Default: Vimeo with domain-level privacy (plays only when embedded on the D4Y site). Alternatives: YouTube unlisted, Mux. The DB stores `video_provider` + `video_ref`; admins paste a link and the API parses it. Only Vimeo domain-level privacy (with localhost and the Vercel preview domain on its allowlist) or Mux signed playback actually enforce D31 for the video itself; YouTube unlisted links can be shared (O10). | proposed, pending founder confirmation |
+| D26 | **Lesson videos and materials move into the database (amends D8).** Module and chapter *structure* stays seeded by migration (`program_modules`, `chapter_slugs`, D8/D19). Lessons and materials become rows admins edit without a developer or a redeploy, owned by a new `content` module. Supersedes "program content stays in the frontend" in section 1 for videos and materials only; module text, outcomes, parts, rubrics and statuses stay in FE `src/data/`. D8's history in the ledger is unchanged. | proposed, pending founder confirmation |
+| D27 | **One `materials` table also feeds the Resources library; the `resources` table is dropped.** A material with `library_category` set also appears in the library. Most library items (templates, workbooks, checklists) are the same files as chapter materials, so one row means one upload and one replace. | proposed, pending founder confirmation |
+| D28 | **Every new upload uses the section 8 signed-URL pattern:** admin materials, mentor commented documents. The API makes the path, the browser uploads straight to Storage, then the API confirms the object exists before saving the row. | proposed, pending founder confirmation |
+| D29 | **Student video answers are submitted as a link, not uploaded** (CASPer and interview practice). The student records on their phone or laptop, uploads to YouTube (unlisted), Vimeo, Loom or Google Drive, and pastes the link. The API accepts links from those hosts only. See section 8 for the size and cost trade-off. | proposed, pending founder confirmation |
+| D30 | **Buckets and limits** (all private, ~5 min signed URLs): `submissions` 10 MB, `materials` 25 MB, `feedback` 10 MB. No video bucket (D29). Exact MIME lists are in section 8. | proposed, pending founder confirmation |
+| D31 | **Content access:** students see only *published* lessons and materials for modules they're enrolled in; free preview chapters are an open question. Mentors upload commented documents only to their own assigned, not-yet-completed reviews. Only admins manage content. | proposed, pending founder confirmation |
+| D33 | **A `content` module owns `lessons` and `materials`** (same pattern as `access`, D12): admin and student routes call `content.service`; nobody else touches those tables. | A (content review, 2026-11-18) |
+| D34 | **Library visibility:** the Resources library shows published `library_category` materials from the student's enrolled modules, plus everything under `start-here` for every student (partner codes, general checklists). Downloads use the same check. | A (content review, 2026-11-18) |
+| D35 | **Reorder is one call per chapter:** `PUT /admin/content/order` rewrites `sort_order` for one chapter's lessons or materials in one transaction. Confirmed by D40: it's the only way to reorder (`PATCH` no longer takes `sort_order`). | A (content review, 2026-11-18) |
+| D36 | **A submission holds a list of answers:** `submission_items` (file, video link or typed text, each with a label). One submission is still one review and one round (D16), so CASPer's "2 video and 3 typed responses" is one submission. Assignments list the answers they expect in `answer_spec`. | A (content review, 2026-11-18) |
+| D37 | **Lesson codes are derived on read, not stored:** `N.0` for the welcome lesson, `N.C` for a chapter's only lesson, `N.Ca`, `N.Cb` … by `sort_order` when a chapter has several. That's the FE's current rule. `lessons.code` is dropped. | A (content review, 2026-11-18) |
+| D38 | **Workshop recordings are materials of kind `video`:** they reuse `video_provider` + `video_ref` and play in the portal's embedded player under the same privacy as lessons. | A (content review, 2026-11-18) |
+| D39 | **Start here library items need a seat** (revises D34): `start-here` items show only to students with `student_profiles.cohort_id` set, so partner codes don't reach sign-ups who haven't joined. Enrolled-module items are unchanged. | A (content review, 2026-11-18) |
+| D40 | **Keep D35** after the outside reviewer challenged it: because codes come from order (D37), admins need the reorder call. | A (content review, 2026-11-18) |
+
+D32 is unused: in the content review it numbered the "run /office-hours first?" setup question, which records no decision.
 
 ## Not in pilot scope
 
@@ -27,6 +44,8 @@ Fixed constraints from the founders and the team:
 - Scheduled jobs and escalation emails (D4)
 - Email sending from the API. Supabase Auth still needs a custom SMTP provider for its own emails (configured in Supabase, not in API code).
 - Package upgrades, extra review-round purchases (pending founder answers, section 10)
+- Student video uploads to D4Y storage (D29: links instead)
+- Quiz and practice scoring, feedback helpfulness ratings, follow-up messaging (section 10 question 13)
 
 ---
 
@@ -47,7 +66,10 @@ Fixed constraints from the founders and the team:
  Supabase project (Canadian region, ca-central-1)
    ├─ Auth (users and sessions; asymmetric JWT signing keys turned on)
    ├─ Postgres (all app data; RLS on, no policies, so only the API can read it)
-   └─ Storage (private buckets: submissions, resources)
+   └─ Storage (private buckets: submissions, materials, feedback; D30)
+
+ Video platform (Vimeo by default, D25): lesson videos, embedded in the portal by ref
+ Student-owned video hosts (YouTube unlisted, Vimeo, Loom, Drive): practice answers, by link (D29)
 
  Outside the app for the pilot: Cal.com/Calendly links (1-on-1s), a form (hardship seats)
 ```
@@ -56,7 +78,10 @@ Who owns what:
 
 - **Supabase Auth**: accounts, passwords, email verification and resets. The frontend talks to it directly.
 - **Express API**: the only thing that touches app data. It enforces roles (student, mentor, admin) and "mentors see only their students".
-- **Program content stays in the frontend's `src/data/`** (module text, statuses, escalation rules). The backend's only copy of the module list and rubric criteria is the `program_modules` table, seeded by a migration (D8). Every module reference is a foreign key to it. When the FE changes a module or rubric, add a migration in the same week.
+- ~~**Program content stays in the frontend's `src/data/`** (module text, statuses, escalation rules).~~ *Superseded for videos and materials by D26.* The backend's only copy of the module list and rubric criteria is the `program_modules` table, seeded by a migration (D8). Every module reference is a foreign key to it. When the FE changes a module or rubric, add a migration in the same week.
+- **Program structure and copy stay in the frontend's `src/data/`** (module text, outcomes, public parts, rubrics, statuses, escalation rules), with module and chapter slugs mirrored in `program_modules` (D8, D19).
+- **Lesson videos and materials live in the database** (`lessons`, `materials`), owned by the `content` module. Admins add and replace them from the admin Content page with no redeploy (D26). Video files sit on the video platform (D25); material files sit in the `materials` bucket.
+- **Chapter items that point to other features stay in the FE structure**, not in `materials`: assignments, bookings, live sessions, surveys, and the written summary and callouts. They describe the program, they aren't uploaded files.
 
 ## 2. Key decisions
 
@@ -102,6 +127,9 @@ d4ybe/
       me/  student/  mentor/  admin/  payments/   (Stripe webhook lives in payments)
       access/                only writer of enrollments + credit_ledger (D12);
                              service + repository + schemas, no routes
+      content/               only reader/writer of lessons + materials (D26, D33);
+                             service, repository, schemas, video-link parser.
+                             Admin and student routes call content.service; no routes
         <name>.routes.ts       HTTP: parse, call service, send response
         <name>.service.ts      rules: who may do what, status computation
         <name>.repository.ts   SQL only
@@ -129,6 +157,17 @@ All times `timestamptz` (UTC). Ids `uuid` unless noted. Module references are `m
 |---|---|---|
 | program_modules | slug (PK), title, rubric_criteria text[], chapter_slugs text[], sort_order | Seeded by migration: `start-here` + the seven FE slugs. Rubric scores are checked against `rubric_criteria`; progress against `chapter_slugs` (D19) |
 
+### Content (D25–D27, owned by `content`)
+
+| Table | Key columns | Notes |
+|---|---|---|
+| lessons | id, module_slug (FK program_modules), chapter_slug (null = the module's welcome `N.0`), ~~code text~~ (*dropped by D37: derived on read*), title, duration_min int, video_provider (vimeo/youtube/mux, null until recorded), video_ref text (null until recorded), sort_order int, published bool default false, updated_by (FK profiles), updated_at | Check: `published` requires `video_ref is not null`, so a lesson can be planned before it's recorded. `chapter_slug` must be in the module's `chapter_slugs`; Postgres can't foreign-key into an array, so `content.service` checks it and an integration test covers it. Index `(module_slug, chapter_slug, sort_order)`. A chapter with no published lesson is a "written summary only" chapter |
+| materials | id, module_slug (FK program_modules), chapter_slug (null = module-wide), kind (pdf/template/sheet/image/link/quiz/practice/tool/video), title, storage_path (null for links), url (null for files), video_provider + video_ref (kind `video` only, D38), file_name, size_bytes, mime_type, track (null = both, Canada, US), library_category (null, or checklist/template/workbook/practice/recording/partner), sort_order int, published bool default false, updated_by (FK profiles), updated_at | Check: exactly one of `storage_path`, `url`, `video_ref` is set (`video_ref` only for kind `video`, D38). `chapter_slug` checked like lessons. Index `(module_slug, chapter_slug, sort_order)` and a partial index on `(library_category, module_slug) where published and library_category is not null` for the library. A non-null `library_category` puts the row in the Resources library and is its filter type (D27). Replacing a file writes the new object first, updates the row, then deletes the old object |
+
+Seed: a one-off script turns the current FE `src/data/modules.ts` videos and materials into `lessons` and `materials` rows (unpublished where no video or file exists yet), so the pilot starts from today's outline. FE material types map to kinds as follows: `download` → `pdf`, `visual` → `image`, `spreadsheet` → `sheet`; `template`, `link`, `quiz`, `practice` and `tool` keep their names. `assignment`, `booking`, `live`, `survey`, `text` and `callout` are not materials (section 1).
+
+**One copy (C1):** first split FE `Chapter.materials` into `links` (assignment, booking, live, survey: feature links that stay in the FE structure) and `materials` (uploaded files). Once the FE reads `GET /student/modules/:slug`, only the `videos` and `materials` arrays are deleted from FE `modules.ts`, in the same PR, so the database is the only copy of those (O2). Until then, the FE mock content is derived from those arrays rather than typed out a second time.
+
 ### Identity
 
 | Table | Key columns | Notes |
@@ -155,9 +194,10 @@ All times `timestamptz` (UTC). Ids `uuid` unless noted. Module references are `m
 | Table | Key columns | Notes |
 |---|---|---|
 | chapter_progress | PK(student_id, module_slug, chapter_slug), completed_at | Derives FE `Enrollment.done/current`, `startHereDone` |
-| assignments | module_slug, title, instructions, cohort_id, due_at, needs_review | Seeded per cohort |
-| submissions | assignment_id, student_id, version, storage_path, file_name, note, submitted_at | Private bucket `submissions/{student_id}/{submission_id}/…` |
-| reviews | submission_id, mentor_id, status (assigned/in_progress/completed/reassigned), assigned_at, due_at, scores jsonb, strengths, priorities text[], follow_up, completed_at | Completed review = FE `Feedback`. Escalation step computed on read (D4) |
+| assignments | module_slug, title, instructions, cohort_id, due_at, needs_review, ~~answer_format~~ answer_spec text[] (D36: the expected answers in order, e.g. `{video_link,video_link,text,text,text}`; default `{file}`) | Seeded per cohort. CASPer and interview practice list `video_link` answers (D29). Labels ("Video 1", "Typed 2") come from the kinds |
+| submissions | assignment_id, student_id, version, note, submitted_at | One per version; one review and one round each (D16, D36). ~~answer_kind, storage_path, file_name, video_url~~ moved to `submission_items` (D36) |
+| submission_items | submission_id, sort_order, kind (file/video_link/text), label, storage_path, file_name, video_url, body | Exactly one of `storage_path`, `video_url`, `body` per kind. Files in `submissions/{student_id}/{submission_id}/{upload_id}/{file}`; links from an allowed host (D29). The set must match the assignment's `answer_spec` |
+| reviews | submission_id, mentor_id, status (assigned/in_progress/completed/reassigned), assigned_at, due_at, scores jsonb, strengths, priorities text[], follow_up, feedback_file_path (nullable), feedback_file_name (nullable), completed_at | Completed review = FE `Feedback`. Escalation step computed on read (D4). `feedback_file_path` is the mentor's optional commented document in the `feedback` bucket (D28) |
 
 FE status labels (not-started, in-review, feedback-ready, revise, due-soon, overdue) are computed by the API, not stored.
 
@@ -190,7 +230,7 @@ FE status labels (not-started, in-review, feedback-ready, revise, due-soon, over
 
 | Table | Key columns | Notes |
 |---|---|---|
-| resources | title, kind, module_slug, track, storage_path or url | Signed download, enrollment required |
+| ~~resources~~ | ~~title, kind, module_slug, track, storage_path or url~~ | *Superseded by D27:* library items are `materials` rows with `library_category` set |
 | schools | name, place, degree, country, casper, interview, url, facts jsonb, verified_at | Edited in Supabase Studio for the pilot |
 | audit_log (optional) | actor_id, action, target, at | Admin actions |
 
@@ -225,10 +265,26 @@ Also: `checkout.session.expired` → order expired; `charge.refunded` → order 
 
 - Public: `GET /health`, `GET /products`
 - Me: `GET /me` (profile, role, enrollments, credits), `POST /me/onboarding` (track, cycle) (D18)
-- Student: `GET /student/home`, `POST /student/progress`, `GET /student/assignments`, `POST /student/assignments/:id/upload-url`, `POST /student/assignments/:id/submissions`, `GET /student/feedback`, `GET /student/feedback/:id`, `GET /student/sessions` (events + mentor scheduling links), `GET /student/resources`, `GET /student/resources/:id/download`, `GET /student/schools`
+- Student: `GET /student/home`, `POST /student/progress`, `GET /student/assignments`, `POST /student/assignments/:id/upload-url`, `POST /student/assignments/:id/submissions` (an `items[]` list matching the assignment's `answer_spec`: confirmed file paths, video links, typed text; D29, D36), `GET /student/feedback`, `GET /student/feedback/:id`, `GET /student/sessions` (events + mentor scheduling links), `GET /student/resources` (published materials with `library_category`, D27), ~~`GET /student/resources/:id/download`~~ (*superseded by* `/student/materials/:id/download`), `GET /student/schools`
+- Student content (D26, D31): `GET /student/modules/:slug` (chapters with published lessons and materials; 403 if not enrolled, except preview chapters if the founders want them), `GET /student/materials/:id/download` (a signed URL for files, the URL itself for links; enrollment checked), `GET /student/reviews/:id/feedback-file` (signed URL to the commented document; the review must belong to the student)
 - Payments: `POST /payments/checkout`, `POST /webhooks/stripe`
-- Mentor: `GET /mentor/dashboard`, `GET /mentor/reviews`, `GET /mentor/reviews/:id`, `PUT /mentor/reviews/:id`, `POST /mentor/reviews/:id/complete`, `GET|POST /mentor/hours`
+- Mentor: `GET /mentor/dashboard`, `GET /mentor/reviews`, `GET /mentor/reviews/:id`, `PUT /mentor/reviews/:id`, `POST /mentor/reviews/:id/feedback-upload-url` (D28; own assigned review, not completed), `POST /mentor/reviews/:id/complete` (accepts an optional `feedbackFilePath` from that upload URL; the API confirms the object exists; a re-upload gets a new path and the latest confirmed one is saved, C4), `GET|POST /mentor/hours`
 - Admin: `GET /admin/overview`, `GET /admin/students`, `PATCH /admin/students/:id`, `GET /admin/mentors`, `POST /admin/mentors/invite`, `PATCH /admin/mentors/:id`, `GET /admin/reviews`, `POST /admin/reviews/:id/reassign`, `POST /admin/enrollments`, `POST /admin/credits`
+- Admin content (D26–D28, admin only): `GET /admin/content` (every module → chapters → lessons and materials, including unpublished), `POST /admin/lessons`, `PATCH /admin/lessons/:id` (video link, title, length, publish toggle), `DELETE /admin/lessons/:id`, `POST /admin/materials/upload-url` (returns the server-made path and signed upload URL), `POST /admin/materials` (a confirmed path, or a URL for links), `PATCH /admin/materials/:id` (metadata, publish toggle, a replacement path), `DELETE /admin/materials/:id` (row first, then the Storage object), `PUT /admin/content/order` (D35: `{ moduleSlug, chapterSlug, kind: lessons|materials, ids[] }`; ids must be exactly that chapter's current items, rewritten in one transaction). No separate resource endpoints: the library is materials (D27)
+
+**Upload flow (all three uploads, D28):**
+
+```
+ browser                     API                                   Storage
+ │ POST …/upload-url ──────► │ check role + ownership; make id + path │
+ │                           │ {bucket}/{owner}/{id}/{safe-name}       │
+ │ ◄── { path, signedUrl } ─ │ createSignedUploadUrl ────────────────►│
+ │ PUT file to signedUrl ─────────────────────────────────────────────►│ bucket checks size + MIME
+ │ POST … { path } ────────► │ path shape + owner prefix ok? object   │
+ │                           │ exists? ───────────────────────────────►│
+ │                           │ save row (materials / reviews.feedback_ │
+ │ ◄── saved row ─────────── │ file_path / submissions)               │
+```
 
 **API contract (D13):** each module's response zod schemas (`<name>.schemas.ts`) are the source of truth. They're registered with zod-to-openapi, and `npm run openapi` writes `openapi.json` (CI fails if it's stale). The FE generates `src/types/api.ts` from it with openapi-typescript (dev dependency) and moves API-facing types there as each endpoint is wired. A renamed field then breaks the FE typecheck instead of a live page. **Transport (D20):** BE commits `openapi.json` to main; FE `npm run gen:api` downloads it with a read-only GitHub token and regenerates `src/types/api.ts`; FE CI fails if the regenerated file differs.
 
@@ -249,8 +305,23 @@ Also: `checkout.session.expired` → order expired; `charge.refunded` → order 
 - Mentor queries filter by `mentor_id = req.user.id`; student queries by `student_id = req.user.id`; tested
 - Private buckets, ~5 min signed URLs. File type and size limits are set **on the bucket** (`file_size_limit`, `allowed_mime_types`), because a signed upload URL can't enforce them and the API never sees the file (O7)
 - Upload flow: `POST …/upload-url` creates the submission id and the storage path on the server and returns both. `POST …/submissions` accepts only that server-made path and checks the object exists before saving the row (O7)
+- **Buckets (D30)**, all private, ~5 min signed URLs, paths always made by the API:
+
+  | Bucket | Path | `file_size_limit` | `allowed_mime_types` | Who uploads |
+  |---|---|---|---|---|
+  | `submissions` | `{student_id}/{submission_id}/{file}` | 10 MB | `application/pdf`, `application/msword`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | the student |
+  | `materials` | `{module_slug}/{material_id}/{file}` | 25 MB | PDF, Word, Excel (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`), PowerPoint, `text/csv`, `image/png`, `image/jpeg`, `image/webp` | admins (D26) |
+  | `feedback` | `{review_id}/{upload_id}/{file}` (unique per upload, `upsert: false`, C4) | 10 MB | same as `submissions` | the assigned mentor (D28) |
+
+- **No video bucket (D29).** Uploading practice video would mean a fourth bucket at ~200 MB per file. Supabase's standard upload is meant for small files, so files that size need resumable (TUS) uploads, which signed upload URLs don't cover. Each mentor viewing also counts against bandwidth. A 60-second phone video is roughly 50–150 MB; 25 students × ~8 answers × revisions puts it in the tens of GB. That fits inside Pro's included storage, but the large-upload handling is real work. Links cost nothing to store and work from any phone. The trade-off: students' videos sit on their own accounts, and a wrongly set sharing permission blocks the mentor. The form says "check the link opens in a private window", and mentors flag broken links.
+- **What "confirm" checks (O4):** nothing is saved at upload-url time. On confirm the API checks the path has the exact shape it issues (`{bucket}/{owner}/{uuid}/{safe-name}`), that the owner segment is the caller's own (student id, review id they're assigned to, or any module for admins), and that the object exists. Every upload, including a replacement material file, gets a fresh `uuid` segment, so `upsert: false` never collides. A caller can only confirm objects under a prefix they could already write to.
+- **Orphans (O12):** replaced files, abandoned uploads and failed deletes leave objects behind. Accepted for the pilot (a few MB); the API logs each orphaned path so an admin can clear them from the Storage dashboard.
+- **Video-link rules (D25, D29):** the content service parses admin video links into `video_provider` + `video_ref` (Vimeo, YouTube, Mux playback ids). Student answer links must be `https` with a parsed hostname ending in youtube.com, youtu.be, vimeo.com, loom.com, drive.google.com or docs.google.com (so `www.`, `m.`, `/shorts/` and Loom `/share/` links pass); each form has a test (O11). The parser keeps Vimeo's unlisted `h=` hash in `video_ref` (O10).
+- **Track (O6):** content responses include every track's items with a `track` field (`'Canada' | 'US' | 'Both'`; DB null maps to `'Both'` in the response schema), matching today's FE, which labels and filters by track rather than hiding. Lessons take their track from the chapter (FE structure); they have no track column.
+- **Content access (D31, D34, D39):** `GET /student/modules/:slug`, `GET /student/resources` and material downloads check `published` plus enrollment (or `start-here` with a seat, D39); unpublished rows never leave the admin endpoints. All three go through `content.service` (D33). A mentor's feedback upload URL is issued only for their own review with status `assigned` or `in_progress`. Only admins call `/admin/content`, `/admin/lessons*` and `/admin/materials*`.
+- **FE CSP:** embedding the player needs `frame-src https://player.vimeo.com` (or the chosen host) in `d4yfe/vercel.json`, plus the Supabase Storage origin in `connect-src` for direct uploads.
 - RLS on, no policies
-- Rate-limit checkout and upload-URL endpoints
+- Rate-limit checkout and all upload-URL endpoints (student, mentor, admin)
 - Webhook signature checks and idempotency
 
 ## 9. Build order
@@ -258,8 +329,9 @@ Also: `checkout.session.expired` → order expired; `charge.refunded` → order 
 0. Project setup only (no features): TypeScript, lint, test runner, folder skeleton, `/health`, Dockerfile, CI
 1. Foundation: Supabase project, profiles migration + trigger, Auth with custom SMTP, auth middleware, `/me`, first Cloud Run deploy; FE login + role routing
 2. Student read side, `POST /me/onboarding`. FE: add a stable `slug` to every chapter in `src/data/modules.ts` (D19); replace the booking/availability pages and `Bookable`/`AvailabilitySlot` sample data with mentor scheduling links (D2, O11)
+   - **2b. Content (D25–D27, D30, D31):** `lessons` and `materials` migrations, the `materials` bucket, the seed script from FE `modules.ts`, the `content` module, `GET /student/modules/:slug`, material downloads, `GET /student/resources` from materials, and the admin content endpoints with the upload flow. It lands before submissions so staff can load real videos and files while the rest is built. **Starts after founders answer section 10 questions 8, 9 and 12** (video host, who manages content, previews) (O8). FE in 2b: the admin Content page, the embedded player, `frame-src`/`connect-src` CSP changes in `vercel.json`, the `Chapter.materials` split (C1) and wiring the module page to the API.
 3. Payments. **Starts only after founders answer section 10 questions 1, 2 and 5** (D21)
-4. Submissions and reviews
+4. Submissions and reviews, including the `submissions` and `feedback` buckets, video-link answers (D29) and the mentor commented document (D28)
 5. Admin (roster, mentor invites, reassignment, manual grants). FE: replace the admin hardship page with the manual grant form (D3, O11)
 
 ## 11. Cost, performance and abuse limits (pilot)
@@ -269,6 +341,7 @@ Spend is mostly fixed: Supabase Pro $25/month (spend cap left on), Cloud Run wit
 - **Queries:** index every foreign key used in a filter (`reviews(mentor_id, status)`, `submissions(student_id)`, `enrollments(student_id)`, `orders(cohort_id, status)`). No queries inside loops: lists load with one query (`= any(...)`) or a join. Page endpoints (`/student/home`, `/mentor/dashboard`) return everything the page needs in one request. Pool ≈ 5 connections per instance.
 - **Rate limits:** `express-rate-limit`, in-memory store (fine at ≤3 instances). About 5/min per user on `POST /payments/checkout`, 10/min per user on upload-URL, a looser global limit elsewhere. No limit on `/webhooks/stripe`. Supabase Auth limits sign-in and resets itself.
 - **Caching:** no Redis/Memorystore. jose caches JWKS. `program_modules` and `products` are cached in memory with a few minutes' expiry. `Cache-Control` on public read-only responses (`GET /products`, `GET /student/schools`). Per-student data is never cached.
+- **Video hosting (D25):** a new fixed cost and the main content cost. Vimeo's domain-level privacy needs a paid plan, roughly $12–25/month at the entry tiers [estimated; check current Vimeo pricing], with ~70 lesson videos well inside its storage limits. YouTube unlisted is free, but anyone with the link can watch. Mux bills per minute stored and streamed, which is small at 25 students but variable. Student practice answers cost nothing on links (D29). Material files (PDFs, templates) are a few hundred MB at most, inside Supabase Pro.
 - **Cost guards:** Cloud Run max instances 3, a Google Cloud billing budget alert, Supabase spend cap on, an Artifact Registry cleanup policy (keep the last ~10 images), no request bodies in logs.
 
 Testing: Vitest + supertest against local Supabase; Stripe CLI for webhooks.
@@ -282,6 +355,18 @@ Testing: Vitest + supertest against local Supabase; Stripe CLI for webhooks.
 5. Invite-only or open sign-up for the pilot?
 6. Email sender domain (for Supabase Auth emails)
 7. Approve ~$25/month for the Supabase Pro plan on the production project (D11)
+8. **Video host and budget (D25):** Vimeo with domain-level privacy (paid plan), YouTube unlisted (free, shareable links) or Mux (usage-based)? Who owns the account?
+9. **Who adds content after launch (D26):** which D4Y staff get admin access to the Content page, and who records and uploads the ~70 lesson videos?
+10. **Commented documents (D28):** will mentors return marked-up files, or is the written rubric feedback enough for the pilot?
+11. **Student video answers (D29):** is a link to YouTube unlisted, Loom or Drive acceptable for CASPer and interview practice, or must videos be uploaded to D4Y (more cost and build work)?
+12. **Free previews (D31):** should any chapters be visible before purchase (the FE sample mentions "Chapter 5.1 is free to preview")?
+13. **Prototype features not in the plan.** Please confirm whether the pilot needs each one. None is implemented:
+    - In-app booking and session reminders (conflicts with D2: scheduling links)
+    - Blind two-reviewer hardship review in the app (conflicts with D3: off-platform form)
+    - Automatic escalation and reassignment of overdue reviews (conflicts with D4: computed on read, admin reassigns by hand)
+    - Feedback helpfulness rating (the FE shows it on sample data; there is no table or endpoint)
+    - "Ask a follow-up" replies from student to mentor (FE shows a reply box; there is no messages table or endpoint)
+    - Quizzes and practice scoring (materials of kind `quiz`/`practice` are links or files only; nothing stores answers or scores)
 
 ---
 
@@ -1074,17 +1159,140 @@ None.
 - Parallelization: 3 lanes, 3 parallel / 4 sequential steps in Lane A
 - Lake Score: 13/18
 
+## Review: /plan-eng-review, content uploads (2026-11-18)
+
+Target: D25–D40 and their edits in sections 1, 3, 4, 6, 8, 9, 10, 11 of this file. Branch `feat/content-uploads`. Report file: this file. Earlier decisions D2–D23 not relitigated.
+
+### Scope record
+
+feature answers: none proposed (every piece maps to a founder requirement in the brief); structure: D33=A (content module); accepted scope: D25–D31 as proposed plus D33–D40; pending remedies: none.
+
+Scope Challenge result: scope accepted as-is.
+
+### Decisions this run
+
+| Question | Answer | Recorded as |
+|---|---|---|
+| D32 run /office-hours first? | B, skip | setup only |
+| D33 who owns lessons/materials | A, content module | D33 |
+| D34 library visibility | A, enrolled + Start here | D34 (revised by D39) |
+| D35 reorder | A, one call per chapter | D35 |
+| D36 multi-answer submissions | A, submission_items | D36 |
+| D37 lesson codes | A, derived on read | D37 |
+| D38 workshop recordings | A, material kind video | D38 |
+| D39 Start here visibility | A, seat holders only | D39 |
+| D40 keep D35 (outside challenge) | A, keep | D40 |
+
+Approval readiness: PASS. D33–D40 each cite their own answer. Corrections applied without a question: C1, C4, O2, O4, O6, O8, O10, O11, O12, O14 (required for approved decisions or factual). Rejected: O13 (rename the feedback-file route), because the founder brief names `GET /student/reviews/:id/feedback-file`.
+
+### Reality rows
+
+- REALITY: premise-table pass 4 premises with receipts (FE derives codes, StudentModule.tsx `chapterCode`; CASPer assignment is multi-answer, modules.ts "2 video and 3 typed responses"; chapter.materials mixes assignments, modules.ts "Build your timeline"; mentor form already has a commented-document field, MentorReview.tsx), unverified=1 (Vimeo plan pricing) docs/architecture.md section 11
+- REALITY: already-done pass no backend code exists; FE already has videos, materials and a commented-document field (reused) d4yfe/src/features/mentor/pages/MentorReview.tsx
+- REALITY: surface-check finding Supabase `createSignedUploadUrl`, bucket `file_size_limit`/`allowed_mime_types` and Vimeo domain privacy are named but unverified locally (CLIs not installed, T2 from the first review) docs/architecture.md section 8
+- REALITY: binding-decisions pass D2–D4 not reintroduced; prototype features that conflict are listed as open questions only (section 10, question 13) docs/architecture.md section 10
+- REALITY: numbers finding video size 50–150 MB per minute and Vimeo $12–25/month are [estimated]; 25 students [measured: demo.ts:155] docs/architecture.md sections 8, 11
+- REALITY: deferred-asks pass every brief item is placed: videos D25, content in DB D26, tables section 4, uploads D28, video answers D29, buckets D30, access D31, founder questions 8–13 docs/architecture.md
+- REALITY: pr-count pass one PR per repo (BE plan, FE mock flow) on feat/content-uploads docs/architecture.md
+
+### 1. Architecture review
+
+- `[INFORMATIONAL] (confidence: 8/10) section 4 seed` — C1: FE `modules.ts` would keep a second copy of videos/materials. Applied, refined by O2: split `Chapter.materials` first.
+- `[INFORMATIONAL] (confidence: 7/10) D27` — C2: the library had no visibility rule. Decided D34, revised D39.
+- Two shapes: content module (chosen, D33) vs admin-owned tables. The content module hides the publish, enrollment and seat rules behind one service used by three readers (module page, library, downloads) and one writer (admin).
+- Red flags: hand-synced list (C1, fixed), split ownership (D33, fixed), two ways to reorder (D40, fixed).
+- Failure per integration: video host down → player shows its own error and the written summary still renders; Storage confirm finds no object → 400, the FE offers retry; replacement half-done → the old file stays live until the row updates.
+
+Dispositions: C1 applied; C2 → D34/D39.
+
+### 2. Code quality review
+
+- `[INFORMATIONAL] (confidence: 7/10) section 6 reorder` — C3: per-item `sort_order` can half-apply. Decided D35/D40.
+- `[INFORMATIONAL] (confidence: 7/10) section 8 feedback bucket` — C4: `{review_id}/{file}` collides on re-upload. Applied: per-upload id segment.
+- `[INFORMATIONAL] (confidence: 5/10) lessons.duration_min` — C5: length is typed by the admin and can drift from the real video (medium confidence, verify this is actually an issue). No change; the admin form shows the provider's length when the link is pasted, if the host's oEmbed returns it.
+
+### 3. Test review
+
+```
+CODE PATHS (planned)                                   USER FLOWS
+[+] content.service                                    [+] Admin manages content
+  ├── [GAP] enrollment + published gate (D31)            ├── [GAP] [→E2E] paste video link → publish → student sees
+  ├── [GAP] start-here needs a seat (D39)                ├── [GAP] [→E2E] upload → confirm → publish → download
+  ├── [GAP] chapter_slug in chapter_slugs                ├── [GAP] replace file; old object logged
+  ├── [GAP] code derivation N.0 / N.C / N.Ca (D37)       └── [GAP] reorder → codes follow (D35/D37)
+  ├── [GAP] publish requires video_ref                 [+] Mentor
+  ├── [GAP] reorder ids == chapter items (D35)           └── [GAP] [→E2E] attach commented doc → student opens it
+  └── video-link parser                                [+] Student
+      ├── [GAP] Vimeo h= hash kept (O10)                 ├── [GAP] [→E2E] CASPer: 2 links + 3 typed, one round
+      └── [GAP] host suffix forms (O11)                  └── [GAP] unenrolled module → 403
+[+] upload confirm (O4)
+  ├── [GAP] wrong shape / foreign prefix / missing object → 400
+  └── [GAP] mentor upload URL: own review, not completed
+[+] submissions
+  └── [GAP] items match answer_spec (D36)
+[+] routes
+  └── [GAP] /admin/content* admin-only
+
+COVERAGE: 0/19 paths tested (no code yet)  |  GAPS: 19 (4 E2E)
+Legend: [GAP] no test yet  |  [→E2E] needs an integration test through the API
+```
+
+Test Plan artifact: `~/.gstack/projects/ManasKohli-d4ybe/manaskohli-feat-content-uploads-eng-review-test-plan-20261118-203903.md`.
+
+### 4. Performance review
+
+- `[INFORMATIONAL] (confidence: 7/10) GET /student/modules/:slug` — two indexed queries (lessons, materials) per page plus the enrollment check; no cache needed at pilot scale, since content edits must show immediately. The FE player iframes load lazily (`loading="lazy"`), so a module page with ~10 videos doesn't load 10 players up front.
+
+### Outside voice (Claude Plan subagent, native fallback; Codex not installed)
+
+Completed in 104 s, under the 5-minute limit. VERDICT: FINDINGS (14). Decided: O1→D36, O3→D37, O5→D38, O7→D39, O9→D40. Applied: O2, O4, O6, O8, O10, O11, O12, O14. Rejected: O13 (route named in the founder brief).
+
+### NOT in scope
+
+Student video uploads (D29), quiz/practice scoring, helpfulness ratings, follow-up messaging, in-app booking, blind hardship review, auto-escalation (all section 10 question 13), orphan cleanup automation (O12).
+
+### Implementation Tasks
+- [ ] **T10 (P1, human: ~2 days / CC: ~45 min)** — content — lessons/materials migrations, `materials` bucket, seed from FE modules.ts, content module, student and admin content endpoints, upload confirm. Gated on founder questions 8, 9, 12
+  - Surfaced by: D25–D27, D30, D31, D33–D35, D37, D38, O4, O8
+  - Files: supabase/migrations/, src/modules/content/, src/modules/student/, src/modules/admin/
+  - Verify: content edge cases in the Test Plan
+- [ ] **T11 (P1, human: ~1 day / CC: ~30 min)** — submissions — `submission_items`, `answer_spec`, video-link answers, `feedback` bucket and commented documents
+  - Surfaced by: D28, D29, D36, C4, O11
+  - Files: supabase/migrations/, src/modules/student/, src/modules/mentor/
+  - Verify: multi-answer and feedback-file tests
+- [ ] **T12 (P2, human: ~1 day / CC: ~30 min)** — frontend — split `Chapter.materials`, embedded player, CSP, wire the Content page to the API (after T10)
+  - Surfaced by: C1, O2, O8
+  - Files: d4yfe/src/types, d4yfe/src/data/modules.ts, d4yfe/vercel.json
+  - Verify: `npm run check` in d4yfe
+
+### Completion summary
+
+- Step 0: Scope Challenge — scope accepted as-is
+- Reality rows: 7/7 tier-1 rows emitted, 1 unverified premise
+- Architecture Review: 2 issues found
+- Code Quality Review: 2 issues found
+- Test Review: diagram produced, 19 gaps identified
+- Performance Review: 1 issue found
+- NOT in scope: written
+- What already exists: FE videos, materials, MaterialList, mentor commented-document field (reused)
+- TODOS.md updates: 0 items proposed
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review
+- Outside voice: Codex not installed; native Claude Plan subagent completed (in-host), 14 findings, outside coverage unavailable
+- Parallelization: Sequential implementation, no parallelization opportunity (T11 and T12 depend on T10)
+- Lake Score: 6/6
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Outside Review | Codex not installed; native Claude Plan subagent fallback | Independent 2nd opinion | 1 | unavailable (in-host fallback completed) | 14 findings, all resolved (4 applied, 10 decided D14–D23) |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | ISSUES OPEN | 38 issues, 0 critical gaps |
+| Outside Review | Codex not installed; native Claude Plan subagent fallback | Independent 2nd opinion | 2 | unavailable (in-host fallback completed) | latest: 14 findings, all resolved (5 decided D36–D40, 8 applied, 1 rejected) |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 2 | ISSUES OPEN | latest: 24 issues, 0 critical gaps |
 | Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-- **OUTSIDE COVERAGE:** codex, plan-review phase, unavailable (CLI not installed); native Claude Plan subagent completed in 80 s with 14 findings. Native results don't count as outside coverage.
-- **VERDICT:** No review CLEAR. Eng review: all findings decided or applied, and the open issues are mapped to tasks T1–T9 (test gaps close as code lands). eng review required
+- **OUTSIDE COVERAGE:** codex, plan-review phase, unavailable (CLI not installed) in both runs; native Claude Plan subagent completed both times. Native results don't count as outside coverage.
+- **VERDICT:** No review CLEAR. All findings decided or applied; open issues are build tasks (T1–T12) and untested planned paths. eng review required
 
 NO UNRESOLVED DECISIONS
