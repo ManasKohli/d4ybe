@@ -10,7 +10,7 @@ The API for Dentistry for Youth's Dental Pathway Program: a modular, digital pro
 
 | Part | Technology | Where |
 |---|---|---|
-| Frontend | React + Vite | `d4yfe` repo, deployed on Vercel |
+| Frontend | React + Vite | `d4yfe` repo: production on Firebase Hosting in this API's GCP project; Vercel for dev and previews only (plan D41) |
 | API | Node.js 24 + Express 5 + TypeScript | This repo, deployed on Google Cloud Run |
 | Database, auth, file storage | Supabase (Postgres, Auth, Storage) | Supabase projects in `ca-central-1` |
 | Payments | Stripe Checkout (hosted, cards only) | Stripe account |
@@ -121,7 +121,7 @@ npm run check      # typecheck, lint, test, build; run before every push
 | `STRIPE_SECRET_KEY` | Secret | Test mode until launch |
 | `STRIPE_WEBHOOK_SECRET` | Secret | From the Stripe dashboard, or from `stripe listen` locally |
 | `APP_URL` | Plain | Frontend URL, for Checkout success and cancel redirects |
-| `ALLOWED_ORIGINS` | Plain | Comma-separated CORS allowlist |
+| `ALLOWED_ORIGINS` | Plain | Comma-separated CORS allowlist. Production: the pilot domain (and the Firebase `*.web.app` / `*.firebaseapp.com` URLs if used), never Vercel origins. Dev/staging: Vercel preview origins and `http://localhost:5173` (plan section 8) |
 | `PORT` | Set by Cloud Run | Defaults to 8080 locally |
 
 The app refuses to start if any variable is missing or malformed (`src/config/env.ts`). Never commit `.env`. Only this API holds the Supabase secret key; the frontend uses the publishable key.

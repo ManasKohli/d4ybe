@@ -9,7 +9,7 @@ Fixed constraints from the founders and the team:
 - Express API (lightweight), deployed on **Google Cloud Run**
 - **Supabase** for Postgres, Auth and file storage (not set up yet)
 - **Stripe** payments are in scope for the pilot
-- Frontend is a React + Vite SPA on Vercel (already built against sample data)
+- Frontend is a React + Vite SPA (already built against sample data). ~~Hosted on Vercel~~ *Superseded by D41:* production on **Firebase Hosting** in the same GCP project as the API; Vercel for dev and previews only
 
 ## Binding decisions
 
@@ -19,7 +19,7 @@ Fixed constraints from the founders and the team:
 | D3 | Hardship-seat applications run off-platform (a form). An admin grants an approved seat with `POST /admin/enrollments` (`source = hardship`). No hardship tables in the pilot. | A |
 | D4 | No scheduled jobs in the pilot. Review escalation is computed when pages load (FE `features/admin/reviewAge.ts`). No Cloud Scheduler, no `/internal/jobs`. | A |
 | D5 | Folder structure: feature modules with four layers (routes, service, repository, schemas). | A |
-| D25 | **Lesson videos are hosted on a video platform, not in Supabase Storage.** Default: Vimeo with domain-level privacy (plays only when embedded on the D4Y site). Alternatives: YouTube unlisted, Mux. The DB stores `video_provider` + `video_ref`; admins paste a link and the API parses it. Only Vimeo domain-level privacy (with localhost and the Vercel preview domain on its allowlist) or Mux signed playback actually enforce D31 for the video itself; YouTube unlisted links can be shared (O10). | proposed, pending founder confirmation |
+| D25 | **Lesson videos are hosted on a video platform, not in Supabase Storage.** Default: Vimeo with domain-level privacy (plays only when embedded on the D4Y site). Alternatives: YouTube unlisted, Mux. The DB stores `video_provider` + `video_ref`; admins paste a link and the API parses it. Only Vimeo domain-level privacy (with localhost and the Vercel preview domain on its allowlist) or Mux signed playback actually enforce D31 for the video itself; YouTube unlisted links can be shared (O10). **Allowlist (D41):** the Vimeo domain allowlist must include the prod custom domain and the Firebase default domains if used (`<project>.web.app`, `<project>.firebaseapp.com`), the Vercel preview domain, and `localhost`. | proposed, pending founder confirmation |
 | D26 | **Lesson videos and materials move into the database (amends D8).** Module and chapter *structure* stays seeded by migration (`program_modules`, `chapter_slugs`, D8/D19). Lessons and materials become rows admins edit without a developer or a redeploy, owned by a new `content` module. Supersedes "program content stays in the frontend" in section 1 for videos and materials only; module text, outcomes, parts, rubrics and statuses stay in FE `src/data/`. D8's history in the ledger is unchanged. | proposed, pending founder confirmation |
 | D27 | **One `materials` table also feeds the Resources library; the `resources` table is dropped.** A material with `library_category` set also appears in the library. Most library items (templates, workbooks, checklists) are the same files as chapter materials, so one row means one upload and one replace. | proposed, pending founder confirmation |
 | D28 | **Every new upload uses the section 8 signed-URL pattern:** admin materials, mentor commented documents. The API makes the path, the browser uploads straight to Storage, then the API confirms the object exists before saving the row. | proposed, pending founder confirmation |
@@ -34,6 +34,7 @@ Fixed constraints from the founders and the team:
 | D38 | **Workshop recordings are materials of kind `video`:** they reuse `video_provider` + `video_ref` and play in the portal's embedded player under the same privacy as lessons. | A (content review, 2026-11-18) |
 | D39 | **Start here library items need a seat** (revises D34): `start-here` items show only to students with `student_profiles.cohort_id` set, so partner codes don't reach sign-ups who haven't joined. Enrolled-module items are unchanged. | A (content review, 2026-11-18) |
 | D40 | **Keep D35** after the outside reviewer challenged it: because codes come from order (D37), admins need the reorder call. | A (content review, 2026-11-18) |
+| D41 | **Production frontend on Firebase Hosting, in the same Google Cloud project as the Cloud Run API**, so production runs on one GCP bill (Firebase Hosting, Cloud Run, Secret Manager, Artifact Registry). Deployed from GitHub Actions on merge to `main`. **Vercel stays for dev and previews only.** The API stays on Cloud Run (Toronto) and data in Supabase `ca-central-1`; the static frontend holds no student data, so PIPEDA residency is unchanged. Reason: billing simplicity, not a problem with Vercel. Details in sections 7–9. | A (team decision, 2026-11-18) |
 
 D32 is unused: in the content review it numbered the "run /office-hours first?" setup question, which records no decision.
 
@@ -52,7 +53,7 @@ D32 is unused: in the content review it numbered the "run /office-hours first?" 
 ## 1. How the pieces fit
 
 ```
- Browser (React SPA on Vercel)
+ Browser (React SPA: Firebase Hosting in prod, Vercel for dev/previews; D41)
    │  1. sign in / sign up ─────────────────────►  Supabase Auth
    │  2. calls the API with the user's sign-in token (JWT)
    │  3. uploads files straight to Storage with a signed URL from the API
@@ -77,6 +78,7 @@ D32 is unused: in the content review it numbered the "run /office-hours first?" 
 Who owns what:
 
 - **Supabase Auth**: accounts, passwords, email verification and resets. The frontend talks to it directly.
+- **Firebase Hosting (D41)**: serves the production frontend's static files from the same GCP project as the API. No student data lives there, so data residency is unchanged. Vercel serves dev and preview builds only.
 - **Express API**: the only thing that touches app data. It enforces roles (student, mentor, admin) and "mentors see only their students".
 - ~~**Program content stays in the frontend's `src/data/`** (module text, statuses, escalation rules).~~ *Superseded for videos and materials by D26.* The backend's only copy of the module list and rubric criteria is the `program_modules` table, seeded by a migration (D8). Every module reference is a foreign key to it. When the FE changes a module or rubric, add a migration in the same week.
 - **Program structure and copy stay in the frontend's `src/data/`** (module text, outcomes, public parts, rubrics, statuses, escalation rules), with module and chapter slugs mirrored in `program_modules` (D8, D19).
@@ -295,9 +297,19 @@ Also: `checkout.session.expired` → order expired; `charge.refunded` → order 
 - Min instances 0, 512 MB, concurrency 80, max ~3
 - Secrets in Secret Manager: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`; plain env: `APP_URL`, `ALLOWED_ORIGINS`
 - GitHub Actions: CI (typecheck, lint, test, build); deploy to Artifact Registry + Cloud Run via Workload Identity Federation
-- FE: add Supabase + API origins to CSP `connect-src`; add `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL`
+- ~~FE: add Supabase + API origins to CSP `connect-src`; add `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_API_URL`~~ *Superseded by D41:* see "Frontend hosting" below for where the prod CSP and `VITE_*` values live
 - Two Supabase projects: dev/staging on Free, prod on **Pro** (never paused, daily backups kept 7 days) (D11). Turn on asymmetric JWT signing keys in both before the auth middleware is built (the JWKS endpoint returns no keys otherwise)
 - First admin: there is no admin to invite the first admin, so the runbook has a one-off step: invite the coordinator from the Supabase dashboard, then set `profiles.role = 'admin'` with one SQL statement in Studio
+
+### Frontend hosting (D41)
+
+- **Project:** add Firebase to the existing GCP project that runs Cloud Run, so Hosting bills to the same account and sits under the same budget alert (section 11).
+- **Deploy:** a GitHub Actions workflow in `d4yfe` runs `npm run check`, builds, and deploys to Firebase Hosting on merge to `main`. It authenticates with **Workload Identity Federation**, like the API deploy, if the Firebase deploy supports it: `google-github-actions/auth` with `id-token: write`, then `firebase-tools deploy` reading the credentials file it writes. That path is only documented in third-party guides so far, so it's an open item (section 10, question 16). No service-account key is added in the meantime.
+- **SPA rewrite:** every route rewrites to `/index.html`, so deep links like `/portal/modules/casper` load.
+- **Caching:** hashed files under `/assets/**` get `Cache-Control: public, max-age=31536000, immutable`; `index.html` gets `no-cache`, so a deploy shows up on the next load.
+- **Build-time config:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` and `VITE_API_URL` are set per environment at build time: prod values in the GitHub Actions deploy workflow (environment variables, not secrets; they're public in the bundle anyway), dev and preview values in Vercel's project settings.
+- **Custom domain:** the pilot domain points at Firebase Hosting with Firebase-managed SSL. DNS ownership is open question 14.
+- **Config still to create** (`d4yfe`, task H1–H3 in section 9): `firebase.json` (rewrites, cache headers, security headers) and `.firebaserc` (project alias), plus the deploy workflow. `vercel.json` stays for previews.
 
 ## 8. Security
 
@@ -319,7 +331,9 @@ Also: `checkout.session.expired` → order expired; `charge.refunded` → order 
 - **Video-link rules (D25, D29):** the content service parses admin video links into `video_provider` + `video_ref` (Vimeo, YouTube, Mux playback ids). Student answer links must be `https` with a parsed hostname ending in youtube.com, youtu.be, vimeo.com, loom.com, drive.google.com or docs.google.com (so `www.`, `m.`, `/shorts/` and Loom `/share/` links pass); each form has a test (O11). The parser keeps Vimeo's unlisted `h=` hash in `video_ref` (O10).
 - **Track (O6):** content responses include every track's items with a `track` field (`'Canada' | 'US' | 'Both'`; DB null maps to `'Both'` in the response schema), matching today's FE, which labels and filters by track rather than hiding. Lessons take their track from the chapter (FE structure); they have no track column.
 - **Content access (D31, D34, D39):** `GET /student/modules/:slug`, `GET /student/resources` and material downloads check `published` plus enrollment (or `start-here` with a seat, D39); unpublished rows never leave the admin endpoints. All three go through `content.service` (D33). A mentor's feedback upload URL is issued only for their own review with status `assigned` or `in_progress`. Only admins call `/admin/content`, `/admin/lessons*` and `/admin/materials*`.
-- **FE CSP:** embedding the player needs `frame-src https://player.vimeo.com` (or the chosen host) in `d4yfe/vercel.json`, plus the Supabase Storage origin in `connect-src` for direct uploads.
+- ~~**FE CSP:** embedding the player needs `frame-src https://player.vimeo.com` (or the chosen host) in `d4yfe/vercel.json`, plus the Supabase Storage origin in `connect-src` for direct uploads.~~ *Superseded by D41:* see the next bullet.
+- **FE CSP (D41):** in production the security headers, including the CSP, live in the `headers` block of `d4yfe/firebase.json`. The CSP needs `frame-src https://player.vimeo.com` (or the chosen video host) for the player, and `connect-src` for the API origin and the Supabase project origin (Auth and Storage uploads). Vercel previews keep the same headers in `vercel.json`; keep the two in step until previews move (question 15).
+- **CORS / `ALLOWED_ORIGINS` (D41):** production allows only the custom pilot domain, plus `https://<project>.web.app` and `https://<project>.firebaseapp.com` if those default URLs are used. Production never allows Vercel origins. Dev and staging allow the Vercel preview/dev origins and `http://localhost:5173`.
 - RLS on, no policies
 - Rate-limit checkout and all upload-URL endpoints (student, mentor, admin)
 - Webhook signature checks and idempotency
@@ -327,9 +341,14 @@ Also: `checkout.session.expired` → order expired; `charge.refunded` → order 
 ## 9. Build order
 
 0. Project setup only (no features): TypeScript, lint, test runner, folder skeleton, `/health`, Dockerfile, CI
+   - **0b. Frontend prod hosting (D41)**, can run alongside step 1:
+     - H1: create `d4yfe/firebase.json` (SPA rewrite to `/index.html`, cache headers, security headers including the CSP) and `.firebaserc` (project alias for the GCP project).
+     - H2: add the `d4yfe` GitHub Actions deploy to Firebase Hosting on `main` (WIF once question 16 is confirmed), with prod `VITE_*` values; connect the custom domain with managed SSL.
+     - H3: move the prod CSP from `vercel.json` to `firebase.json`; add the API and Supabase origins to `connect-src` and the video host to `frame-src` (this replaces the `vercel.json` part of T12 for production).
+     - Verify: deep links (`/portal/modules/casper`, `/admin/content`) load on the Firebase URL; the browser console shows no CSP violations; the lesson player embeds and a file upload reaches Supabase Storage.
 1. Foundation: Supabase project, profiles migration + trigger, Auth with custom SMTP, auth middleware, `/me`, first Cloud Run deploy; FE login + role routing
 2. Student read side, `POST /me/onboarding`. FE: add a stable `slug` to every chapter in `src/data/modules.ts` (D19); replace the booking/availability pages and `Bookable`/`AvailabilitySlot` sample data with mentor scheduling links (D2, O11)
-   - **2b. Content (D25–D27, D30, D31):** `lessons` and `materials` migrations, the `materials` bucket, the seed script from FE `modules.ts`, the `content` module, `GET /student/modules/:slug`, material downloads, `GET /student/resources` from materials, and the admin content endpoints with the upload flow. It lands before submissions so staff can load real videos and files while the rest is built. **Starts after founders answer section 10 questions 8, 9 and 12** (video host, who manages content, previews) (O8). FE in 2b: the admin Content page, the embedded player, `frame-src`/`connect-src` CSP changes in `vercel.json`, the `Chapter.materials` split (C1) and wiring the module page to the API.
+   - **2b. Content (D25–D27, D30, D31):** `lessons` and `materials` migrations, the `materials` bucket, the seed script from FE `modules.ts`, the `content` module, `GET /student/modules/:slug`, material downloads, `GET /student/resources` from materials, and the admin content endpoints with the upload flow. It lands before submissions so staff can load real videos and files while the rest is built. **Starts after founders answer section 10 questions 8, 9 and 12** (video host, who manages content, previews) (O8). FE in 2b: the admin Content page, the embedded player, `frame-src`/`connect-src` CSP changes in `vercel.json` (*for production these now go in `firebase.json`, D41; `vercel.json` keeps them for previews*), the `Chapter.materials` split (C1) and wiring the module page to the API.
 3. Payments. **Starts only after founders answer section 10 questions 1, 2 and 5** (D21)
 4. Submissions and reviews, including the `submissions` and `feedback` buckets, video-link answers (D29) and the mentor commented document (D28)
 5. Admin (roster, mentor invites, reassignment, manual grants). FE: replace the admin hardship page with the manual grant form (D3, O11)
@@ -342,6 +361,7 @@ Spend is mostly fixed: Supabase Pro $25/month (spend cap left on), Cloud Run wit
 - **Rate limits:** `express-rate-limit`, in-memory store (fine at ≤3 instances). About 5/min per user on `POST /payments/checkout`, 10/min per user on upload-URL, a looser global limit elsewhere. No limit on `/webhooks/stripe`. Supabase Auth limits sign-in and resets itself.
 - **Caching:** no Redis/Memorystore. jose caches JWKS. `program_modules` and `products` are cached in memory with a few minutes' expiry. `Cache-Control` on public read-only responses (`GET /products`, `GET /student/schools`). Per-student data is never cached.
 - **Video hosting (D25):** a new fixed cost and the main content cost. Vimeo's domain-level privacy needs a paid plan, roughly $12–25/month at the entry tiers [estimated; check current Vimeo pricing], with ~70 lesson videos well inside its storage limits. YouTube unlisted is free, but anyone with the link can watch. Mux bills per minute stored and streamed, which is small at 25 students but variable. Student practice answers cost nothing on links (D29). Material files (PDFs, templates) are a few hundred MB at most, inside Supabase Pro.
+- **Frontend hosting (D41):** Firebase Hosting joins the same GCP bill. At pilot traffic it's likely within Hosting's free storage and transfer allowance, or a few dollars a month [estimated]; the GCP budget alert covers it. Vercel Pro is no longer needed for production (see question 15 for previews).
 - **Cost guards:** Cloud Run max instances 3, a Google Cloud billing budget alert, Supabase spend cap on, an Artifact Registry cleanup policy (keep the last ~10 images), no request bodies in logs.
 
 Testing: Vitest + supertest against local Supabase; Stripe CLI for webhooks.
@@ -367,6 +387,9 @@ Testing: Vitest + supertest against local Supabase; Stripe CLI for webhooks.
     - Feedback helpfulness rating (the FE shows it on sample data; there is no table or endpoint)
     - "Ask a follow-up" replies from student to mentor (FE shows a reply box; there is no messages table or endpoint)
     - Quizzes and practice scoring (materials of kind `quiz`/`practice` are links or files only; nothing stores answers or scores)
+14. **Hosting ownership (D41):** who owns the Firebase/GCP project (billing and admin access) and the pilot domain's DNS?
+15. **Vercel plan for dev and previews (D41):** Vercel's free Hobby plan is for non-commercial personal use only, so previews of a paid product may still need Vercel Pro. Options, not decided: (a) keep Vercel for previews on Pro; (b) move previews to Firebase Hosting preview channels and drop Vercel.
+16. **Keyless Firebase deploy (D41):** confirm that `firebase-tools` deploys to Hosting with Workload Identity Federation credentials (it's shown in third-party guides; the auth action's README requires a key only for the Firebase Admin SDK). If it doesn't work, the team decides what to use instead before H2; no key-based setup is chosen here.
 
 ---
 
