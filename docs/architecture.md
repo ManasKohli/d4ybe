@@ -107,6 +107,8 @@ d4ybe/
   src/
     server.ts                start the server, graceful shutdown on SIGTERM
     app.ts                   build the Express app (middleware order below)
+    routes/
+      index.ts               route registry: every feature router is mounted here, nowhere else
     config/
       env.ts                 zod-checked env
     db/
@@ -116,6 +118,7 @@ d4ybe/
       supabase.ts            storage + auth admin
       stripe.ts
       logger.ts              pino
+      http-logger.ts         pino-http: one line per request, no headers/bodies/query strings
     middleware/
       auth.ts                verify JWT → req.user = { id, role }
       require-role.ts
@@ -126,6 +129,7 @@ d4ybe/
     types/
       express.d.ts           req.user typing
     modules/
+      health/                GET /health (step 0)
       me/  student/  mentor/  admin/  payments/   (Stripe webhook lives in payments)
       access/                only writer of enrollments + credit_ledger (D12);
                              service + repository + schemas, no routes
@@ -1124,9 +1128,10 @@ Lane A: Step 0 → Foundation → Access + reviews → Payments (shared src/modu
 ### Implementation Tasks
 Synthesized from this review's findings. Each task derives from a specific finding above. Run with Claude Code or Codex; checkbox as you ship.
 
-- [ ] **T1 (P1, human: ~1 day / CC: ~20 min)** — scaffold — Set up TypeScript, folder skeleton and CI (step 0)
+- [x] **T1 (P1, human: ~1 day / CC: ~20 min)** — scaffold — Set up TypeScript, folder skeleton and CI (step 0)
   - Surfaced by: D5, D9, D10, D12; Code quality (error mapping); red flag 7 (import rule)
-  - Files: package.json, tsconfig.json, eslint.config.js, vitest.config.ts, src/{server,app}.ts, src/config/env.ts, src/middleware/*, src/errors/app-error.ts, src/modules/{me,student,mentor,admin,payments,access}/, Dockerfile, .github/workflows/ci.yml, .nvmrc
+  - Files: package.json, tsconfig.json, eslint.config.js, vitest.config.ts, src/{server,app}.ts, src/routes/index.ts, src/config/env.ts, src/lib/{logger,http-logger}.ts, src/middleware/*, src/errors/app-error.ts, src/modules/health/ (feature module folders are created by the step that first needs them; conventions in src/modules/README.md), Dockerfile, .github/workflows/ci.yml, .nvmrc
+  - Shipped 2026-11-26 on branch feat/t1-scaffold
   - Verify: `npm run typecheck && npm run lint && npm test && docker build .`; `GET /health` returns 200
 - [ ] **T2 (P1, human: ~30 min / CC: ~5 min)** — tooling — Install the Supabase and Stripe CLIs and confirm the commands the plan names
   - Surfaced by: reality row surface-check

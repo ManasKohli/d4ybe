@@ -1,0 +1,31 @@
+{
+  "$schema": "https://github.com/garrytan/gstack/blob/main/docs/pregate.md#pregate-v1",
+  "runner": "npx vitest run {files}",
+  "dependencies": {
+    "src/server.ts": ["tests/server.test.ts"],
+    "src/app.ts": ["tests/app.test.ts"],
+    "src/routes/**": ["tests/app.test.ts"],
+    "src/modules/**": ["tests/app.test.ts"],
+    "src/lib/**": ["tests/app.test.ts", "src/lib/logger.test.ts"],
+    "src/errors/**": ["tests/app.test.ts", "src/middleware/require-role.test.ts"],
+    "src/types/**": ["src/middleware/require-role.test.ts"],
+    "src/middleware/error-handler.ts": ["tests/app.test.ts", "src/middleware/validate.test.ts"],
+    "src/middleware/not-found.ts": ["tests/app.test.ts"],
+    "src/config/**": ["src/config/env.test.ts", "tests/app.test.ts"],
+    "tests/helpers/**": ["tests/app.test.ts"],
+    "package.json": ["tests/app.test.ts", "src/config/env.test.ts", "src/middleware/validate.test.ts", "src/middleware/require-role.test.ts"],
+    "package-lock.json": ["tests/app.test.ts", "src/config/env.test.ts", "src/middleware/validate.test.ts", "src/middleware/require-role.test.ts"],
+    "tsconfig.json": ["tests/app.test.ts", "src/config/env.test.ts", "src/middleware/validate.test.ts", "src/middleware/require-role.test.ts"],
+    "vitest.config.ts": ["tests/app.test.ts", "src/config/env.test.ts", "src/middleware/validate.test.ts", "src/middleware/require-role.test.ts"],
+    "tsconfig.build.json": [],
+    "eslint.config.js": [],
+    "Dockerfile": [],
+    ".dockerignore": [],
+    ".github/workflows/ci.yml": [],
+    ".nvmrc": [],
+    ".env.example": [],
+    "index.js": [],
+    "src/modules/README.md": [],
+    ".gstack/pregate.json": []
+  }
+}
