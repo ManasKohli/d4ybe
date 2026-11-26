@@ -1,27 +1,49 @@
 {
   "name": "d4ybe",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "version": "0.1.0",
+  "private": true,
+  "description": "API for the D4Y Dental Pathway Program (pilot)",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ManasKohli/d4ybe.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/ManasKohli/d4ybe/issues"
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --max-warnings=0 .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
-  "homepage": "https://github.com/ManasKohli/d4ybe#readme",
   "dependencies": {
-    "express": "^5.3.0"
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "helmet": "^8.3.0",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "@eslint/js": "^9.39.5",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.0.0",
+    "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "^5.1.2",
+    "eslint": "^9.39.5",
+    "globals": "^17.14.0",
+    "pino-pretty": "^13.2.0",
+    "supertest": "^7.3.2",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.74.0",
+    "vitest": "^5.1.2"
   }
 }
