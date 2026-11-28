@@ -4,7 +4,7 @@ The API for Dentistry for Youth's Dental Pathway Program: a modular, digital pro
 
 **Scope is the pilot cohort only:** about 25 students, a few mentors and 1–2 admins. Don't add features for the full launch.
 
-**Status:** step 0 (T1) is done, and the database foundation (T4) and auth are in: the full schema from plan section 4 except content (`lessons`, `materials`, gated on D25–D31), RLS lockdown, the signup trigger, the auth middleware and `GET /me`. Hosted Supabase setup is in [`docs/runbook.md`](docs/runbook.md). Every design decision, with the reasoning behind it, is in [`docs/architecture.md`](docs/architecture.md). Read that before changing anything structural.
+**Status:** step 0 (T1) is done, and the database foundation (T4) and auth are in: the full schema from plan section 4 except content (`lessons`, `materials`, gated on D25–D31), RLS lockdown, the signup trigger, the auth middleware and `GET /me`. Hosted Supabase setup is in [`docs/runbook.md`](docs/runbook.md). Pilot progress: [`docs/pilot-tracker.md`](docs/pilot-tracker.md). Every design decision, with the reasoning behind it, is in [`docs/architecture.md`](docs/architecture.md). Read that before changing anything structural.
 
 ## How it fits together
 
