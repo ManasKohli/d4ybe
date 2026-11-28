@@ -1,4 +1,4 @@
-# Backend pilot tracker
+what# Backend pilot tracker
 
 What's done and what's left before the API is ready for the pilot cohort (~25 students). Detail and reasoning for every item live in [`architecture.md`](architecture.md); task ids (T1–T12) and decision ids (D…) point there.
 
@@ -15,7 +15,8 @@ Last updated: 2026-11-28 (hosted project linked and migrated)
 | Step | What | Status |
 |---|---|---|
 | 0 | Scaffold, CI, `/health` (T1) | ✅ done (#3) |
-| 1 | Foundation: database, auth, `/me`, hosted Supabase | 🟡 code and hosted DB done; dashboard settings, first admin, FE login left |
+| 1 | Foundation: database, auth, `/me`, hosted Supabase | 🟡 code, hosted DB and hardening done; `.env` check, first admin, FE login left |
+| Later | SMTP, prod project, sign-up mode | ⏸ founder questions 5, 6, 7 |
 | 2 | Student read side + onboarding | ⬜ not started |
 | 2b | Content: lessons, materials, uploads (T10) | ⛔ founder questions 8, 9, 12 |
 | 3 | Payments (T6) | ⛔ founder questions 1, 2, 5 |
@@ -50,12 +51,11 @@ Recommended order while founder answers are pending: **finish step 1 → step 2 
 **Left**
 - [x] `supabase login` to the D4Y account, `supabase link` to project `d4y` (`hehknlngijfmrxiqczoh`)
 - [x] Project recreated in `ca-central-1` (the first one was in us-west-2)
-- [ ] Decide whether `d4y` is dev/staging or prod, and create the other (D11: dev Free, prod Pro) ⛔ founder question 7 for Pro
 - [x] Asymmetric JWT signing keys: JWKS serves an ES256 key
-- [ ] Remaining dashboard settings (runbook §2): disable legacy JWT secret/keys, Data API auto-expose off, email confirm, password policy (10, letters+digits), redirect URLs, SSL enforced
-- [ ] Custom SMTP for Auth emails ⛔ founder question 6 (sender domain)
+- [x] Dashboard hardening: legacy API keys disabled, legacy HS256 secret revoked, Data API off, email confirmation on, anonymous sign-ins off, email the only provider, site/redirect URLs on `localhost:5173`, SSL enforced
+- [ ] Password policy (min 10, letters + digits) and secure password change: confirm saved
+- [ ] `.env` with the hosted pooler `DATABASE_URL` + CA certificate; verify a certificate-checked connection
 - [x] Migrations pushed to `d4y` (3 migrations, no seed). Verified: 21 tables all with RLS, no browser-role grants or callable functions, 8 program modules, 3 auth triggers, advisors clean, public key gets 401 on every table
-- [ ] Push to the second project once it exists
 - [ ] First admin (runbook §4)
 - [ ] Verify one real connection to the pooler with the Supabase root CA before relying on the prod CA check
 - [ ] FE (d4yfe): Supabase login + role routing, calling `GET /me`
@@ -124,6 +124,14 @@ Recommended order while founder answers are pending: **finish step 1 → step 2 
 - [ ] Build repository row types from `database.types.ts` (review note on #4)
 - [ ] FE repo: Node 20 → 24 (`TODOS.md`)
 - [ ] Pilot-readiness pass: `/qa` on staging, a security review of the full API, restore-from-backup test on prod
+
+## Later · when the founders answer ⏸
+
+Set aside on 2026-11-28 until the founders decide. Nothing in steps 2–5 waits on these.
+
+- [ ] **Q6 · Email sender domain** → set up custom SMTP in Supabase Auth (Authentication → Emails → SMTP), so confirmation, invite and reset emails reach students. Until then Supabase's built-in sender only delivers to members of the Supabase org.
+- [ ] **Q7 · Supabase Pro for prod (~$25/month)** → decide whether `d4y` becomes dev/staging or prod, create the other project in `ca-central-1` on Pro (never paused, daily backups; D11), redo the dashboard hardening there, `supabase db push` to it, create its first admin.
+- [ ] **Q5 · Invite-only or open sign-up** → if invite-only, turn off *Allow new users to sign up* (Authentication → Sign In / Providers); if open, leave it on. Also decides how checkout handles brand-new accounts (step 3).
 
 ## Step 6 · Deploy to GCP ⏸ at the end, by the founders
 
