@@ -230,7 +230,7 @@ FE status labels (not-started, in-review, feedback-ready, revise, due-soon, over
 | Table | Key columns | Notes |
 |---|---|---|
 | events | title, kind (live/group/drop-in), module_slug, track, starts_at, duration_min, join_url | Workshops, office hours |
-| volunteer_hours | mentor_id, date, activity, student_id, hours, source (review/manual), source_id | Auto-logged from completed reviews; sessions entered by hand (D2) |
+| volunteer_hours | mentor_id, date, activity, student_id, hours, source (review/manual), review_id (FK reviews, set null; was source_id) | Auto-logged from completed reviews; sessions entered by hand (D2). The hours outlive the review |
 
 ### Reference
 
@@ -1141,10 +1141,11 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: D11, A4, A5
   - Files: docs/runbook.md
   - Verify: JWKS endpoint returns a key; first admin can sign in to /admin
-- [ ] **T4 (P1, human: ~1 day / CC: ~30 min)** — db — Foundation migration: program_modules (+chapter slugs), profiles/invites/student_profiles trigger, RLS on every table, FK indexes
+- [x] **T4 (P1, human: ~1 day / CC: ~30 min)** — db — Foundation migration: program_modules (+chapter slugs), profiles/invites/student_profiles trigger, RLS on every table, FK indexes
   - Surfaced by: D8, D18, D19, D23, section 11
   - Files: supabase/migrations/, supabase/seed.sql
   - Verify: trigger and RLS tests in the Test Plan
+  - Shipped 2026-11-27 on branch feat/t2-database, with the rest of section 4 except content (T10), plus the auth middleware and `GET /me` from step 1. Choices made while building: the invite role applies only when `auth.users.invited_at` is set (a self-sign-up with an invited address stays a student); invited mentors also get a `mentor_profiles` row; `orders.checkout_url` (for D15 reuse); `schools.latitude/longitude` (FE `School.coordinates`); `credit_ledger` and `audit_log` are append-only and the ledger refuses a negative balance. Local test accounts in `seed.sql`; hosted setup in `docs/runbook.md` (T3)
 - [ ] **T5 (P1, human: ~1 day / CC: ~30 min)** — access + reviews — access module with granted_by; submission → credit → review lifecycle
   - Surfaced by: D12, D16, D22, O7
   - Files: src/modules/access/, student/, mentor/

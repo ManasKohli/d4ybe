@@ -14,7 +14,7 @@ const sqlFromRoutes = {
 };
 
 export default tseslint.config(
-  { ignores: ['dist/', 'coverage/', 'node_modules/'] },
+  { ignores: ['dist/', 'coverage/', 'node_modules/', 'src/db/database.types.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {

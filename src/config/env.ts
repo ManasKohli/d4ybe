@@ -29,12 +29,42 @@ const envSchema = z.object({
           }),
       ),
     ),
+  // Supabase shared pooler, transaction mode (port 6543). Never logged.
+  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  // Project URL (https://<ref>.supabase.co, or http://127.0.0.1:54321 locally). Token issuer and
+  // JWKS endpoint are derived from it (section 2, token check).
+  SUPABASE_URL: z
+    .url({ protocol: /^https?$/ })
+    .refine((value) => URL.canParse(value) && new URL(value).origin === value, {
+      message: 'Must be a bare origin like https://abc.supabase.co (no path or trailing slash)',
+    }),
+  // PEM of Supabase's root CA (Dashboard → Database → SSL). When set, the pooler's certificate is
+  // verified; otherwise the connection is still encrypted but the server isn't authenticated.
+  DATABASE_CA_CERT: z
+    .string()
+    .refine((value) => value.includes('-----BEGIN CERTIFICATE-----'), { message: 'Must be a PEM certificate' })
+    .optional(),
+});
+
+const LOCAL_DB_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+// Production must authenticate the pooler, not just encrypt to it: without the CA, anyone on
+// the network path could pose as the database and read the password and every row (section 8).
+const checkedEnvSchema = envSchema.superRefine((env, ctx) => {
+  const local = URL.canParse(env.DATABASE_URL) && LOCAL_DB_HOSTS.has(new URL(env.DATABASE_URL).hostname);
+  if (env.NODE_ENV === 'production' && !local && !env.DATABASE_CA_CERT) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['DATABASE_CA_CERT'],
+      message: 'Required in production for a remote database (Supabase root CA, PEM)',
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const result = envSchema.safeParse(source);
+  const result = checkedEnvSchema.safeParse(source);
   if (!result.success) {
     throw new Error(`Invalid environment variables:\n${z.prettifyError(result.error)}`);
   }

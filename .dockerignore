@@ -9,5 +9,6 @@ coverage
 *.log
 docs
 tests
+supabase
 **/*.test.ts
 .DS_Store

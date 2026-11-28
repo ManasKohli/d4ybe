@@ -4,7 +4,7 @@ The API for Dentistry for Youth's Dental Pathway Program: a modular, digital pro
 
 **Scope is the pilot cohort only:** about 25 students, a few mentors and 1–2 admins. Don't add features for the full launch.
 
-**Status:** build step 0 (task T1) is done: TypeScript, lint, tests, the folder skeleton, `GET /health`, the Dockerfile and CI. No feature code yet; auth, the database and `/me` come next (step 1). Every design decision, with the reasoning behind it, is in [`docs/architecture.md`](docs/architecture.md). Read that before changing anything structural.
+**Status:** step 0 (T1) is done, and the database foundation (T4) and auth are in: the full schema from plan section 4 except content (`lessons`, `materials`, gated on D25–D31), RLS lockdown, the signup trigger, the auth middleware and `GET /me`. Hosted Supabase setup is in [`docs/runbook.md`](docs/runbook.md). Every design decision, with the reasoning behind it, is in [`docs/architecture.md`](docs/architecture.md). Read that before changing anything structural.
 
 ## How it fits together
 
@@ -87,8 +87,6 @@ docs/architecture.md       the reviewed plan and decision log
 
 ## Getting started
 
-> Today (step 0) only `npm install`, `cp .env.example .env` and `npm run dev` are needed. The Supabase and Stripe steps apply from step 1 onwards.
-
 Requires Node 24 (`nvm use`), Docker (for the local Supabase stack), the [Supabase CLI](https://supabase.com/docs/guides/cli) and the [Stripe CLI](https://docs.stripe.com/stripe-cli).
 
 ```sh
@@ -97,16 +95,34 @@ cp .env.example .env          # fill in values from the local Supabase output
 supabase start                # local Postgres, Auth and Storage in Docker
 supabase db reset             # apply migrations and seed.sql
 npm run dev                   # API on http://localhost:8080
-stripe listen --forward-to localhost:8080/webhooks/stripe   # in a second terminal
+stripe listen --forward-to localhost:8080/webhooks/stripe   # payments step, in a second terminal
 ```
 
-Scripts (`openapi` and `db:types` arrive with the first schemas and migrations):
+**Local test accounts** (from `supabase/seed.sql`, local stack only; never on a hosted project). Password for all three: `D4yLocalDev1`.
+
+| Email | Role | Has |
+|---|---|---|
+| `admin@d4y.local` | admin | |
+| `mentor@d4y.local` | mentor | active, with a scheduling link |
+| `student@d4y.local` | student | a seat in the local pilot cohort, this mentor, 2 modules, 3 review rounds, 1 one-on-one |
+
+Get a token for API calls:
+
+```sh
+curl -s -X POST 'http://127.0.0.1:54321/auth/v1/token?grant_type=password' \
+  -H "apikey: $(supabase status -o env | sed -n 's/^PUBLISHABLE_KEY="\(.*\)"$/\1/p')" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"student@d4y.local","password":"D4yLocalDev1"}'
+```
+
+Scripts (`openapi` arrives with the contract step, T7):
 
 ```sh
 npm run dev        # watch mode
 npm run typecheck  # tsc, strict
 npm run lint       # ESLint
-npm run test       # Vitest (unit + integration against local Supabase)
+npm run test       # Vitest unit and app tests (tests/db are skipped)
+npm run test:db    # integration tests against the local Supabase stack (needs supabase start)
 npm run build      # compile to dist/
 npm run openapi    # write openapi.json from the response schemas
 npm run db:types   # regenerate src/db/database.types.ts after a migration
@@ -118,7 +134,8 @@ npm run check      # typecheck, lint, test, build; run before every push
 | Name | Where | What |
 |---|---|---|
 | `DATABASE_URL` | Secret | Supabase **shared pooler**, transaction mode: `aws-*-ca-central-1.pooler.supabase.com:6543`. The direct host is IPv6-only, and Cloud Run can't reach it by default |
-| `SUPABASE_URL` | Secret | Project URL; the JWKS endpoint is derived from it |
+| `SUPABASE_URL` | Secret | Project URL, bare origin (`https://<ref>.supabase.co`); token issuer and JWKS endpoint are derived from it |
+| `DATABASE_CA_CERT` | Secret | Supabase root CA (PEM), so the pooler's TLS certificate is verified. **Required in production** for a remote database; optional locally |
 | `SUPABASE_SECRET_KEY` | Secret | `sb_secret_…` key, for Storage and Auth admin only |
 | `STRIPE_SECRET_KEY` | Secret | Test mode until launch |
 | `STRIPE_WEBHOOK_SECRET` | Secret | From the Stripe dashboard, or from `stripe listen` locally |
@@ -150,11 +167,13 @@ The full list, with methods and the rules behind each flow (checkout seat holds,
 Postgres on Supabase. Migrations live in `supabase/migrations/` and are the only way the schema changes; never edit tables in Studio by hand. The exception is pilot reference data (`schools`), which admins edit in Supabase Studio.
 
 - **Two projects:** dev/staging on the Free plan, production on **Pro** (never paused, daily backups kept 7 days).
-- **RLS is on for every table, with no policies.** A new table without RLS is a bug.
+- **RLS is on for every table, with no policies, and `anon`/`authenticated` hold no grants.** A new table without RLS is a bug; `tests/db/security.test.ts` fails on one.
+- **Roles come only from `profiles`.** The signup trigger makes everyone a student. A matching `invites` row promotes the user only when Supabase's invite flow sets `auth.users.invited_at` on an account with no password yet, so a self-sign-up with an invited address never becomes staff. Sign-up metadata is ignored. Banned or deleted Auth users are refused on every request, without waiting for their token to expire.
+- **`credit_ledger` and `audit_log` are append-only** (corrections are new rows), and a balance can't go below zero.
 - **Index every foreign key you filter on.**
 - After each migration, run `npm run db:types` and `npm run openapi` if response shapes changed.
 
-Main tables: `program_modules`, `profiles`, `invites`, `student_profiles`, `mentor_profiles`, `cohorts`, `products`, `product_modules`, `orders`, `stripe_events`, `enrollments`, `credit_ledger`, `chapter_progress`, `assignments`, `submissions`, `reviews`, `events`, `volunteer_hours`, `resources`, `schools`. Columns and rules are in `docs/architecture.md` section 4.
+Tables: `program_modules`, `cohorts`, `profiles`, `invites`, `student_profiles`, `mentor_profiles`, `products`, `product_modules`, `orders`, `stripe_events`, `enrollments`, `credit_ledger`, `chapter_progress`, `assignments`, `submissions`, `submission_items`, `reviews`, `events`, `volunteer_hours`, `schools`, `audit_log`. Content (`lessons`, `materials`) arrives with T10. Columns and rules are in `docs/architecture.md` section 4.
 
 ## Deployment
 
