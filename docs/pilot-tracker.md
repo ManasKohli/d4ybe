@@ -15,7 +15,7 @@ Last updated: 2026-11-28 (hosted project linked and migrated)
 | Step | What | Status |
 |---|---|---|
 | 0 | Scaffold, CI, `/health` (T1) | ✅ done (#3) |
-| 1 | Foundation: database, auth, `/me`, hosted Supabase | 🟡 code, hosted DB and hardening done; `.env` check, first admin, FE login left |
+| 1 | Foundation: database, auth, `/me`, hosted Supabase | 🟡 code, hosted DB, hardening and connection done; first admin, FE login left |
 | Later | SMTP, prod project, sign-up mode | ⏸ founder questions 5, 6, 7 |
 | 2 | Student read side + onboarding | ⬜ not started |
 | 2b | Content: lessons, materials, uploads (T10) | ⛔ founder questions 8, 9, 12 |
@@ -54,10 +54,9 @@ Recommended order while founder answers are pending: **finish step 1 → step 2 
 - [x] Asymmetric JWT signing keys: JWKS serves an ES256 key
 - [x] Dashboard hardening: legacy API keys disabled, legacy HS256 secret revoked, Data API off, email confirmation on, anonymous sign-ins off, email the only provider, site/redirect URLs on `localhost:5173`, SSL enforced
 - [ ] Password policy (min 10, letters + digits) and secure password change: confirm saved
-- [ ] `.env` with the hosted pooler `DATABASE_URL` + CA certificate; verify a certificate-checked connection
+- [x] `.env` with the hosted pooler `DATABASE_URL` + CA certificate; certificate-verified connection works (TLS 1.3, `aws-1-ca-central-1.pooler.supabase.com:6543`)
 - [x] Migrations pushed to `d4y` (3 migrations, no seed). Verified: 21 tables all with RLS, no browser-role grants or callable functions, 8 program modules, 3 auth triggers, advisors clean, public key gets 401 on every table
 - [ ] First admin (runbook §4)
-- [ ] Verify one real connection to the pooler with the Supabase root CA before relying on the prod CA check
 - [ ] FE (d4yfe): Supabase login + role routing, calling `GET /me`
 
 ## Step 2 · Student read side ⬜
