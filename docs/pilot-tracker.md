@@ -6,7 +6,7 @@ What's done and what's left before the API is ready for the pilot cohort (~25 st
 
 Legend: `[x]` done · `[ ]` to do · ⛔ blocked (reason given)
 
-Last updated: 2026-11-28
+Last updated: 2026-11-28 (hosted project linked and migrated)
 
 ---
 
@@ -47,11 +47,14 @@ Recommended order while founder answers are pending: **finish step 1 → step 2 
 - [x] Supabase CLI installed (half of T2)
 
 **Left**
-- [ ] `supabase login` to the D4Y account, then `supabase link` (runbook §1)
-- [ ] Confirm the project is in `ca-central-1`; decide whether it's dev/staging or prod, and create the other (D11: dev Free, prod Pro)
-- [ ] Dashboard settings in both projects (runbook §2): asymmetric JWT keys, Data API exposure off, email confirm, password policy, redirect URLs, SSL enforced
+- [x] `supabase login` to the D4Y account, `supabase link` to project `d4y` (`hehknlngijfmrxiqczoh`)
+- [x] Project recreated in `ca-central-1` (the first one was in us-west-2)
+- [ ] Decide whether `d4y` is dev/staging or prod, and create the other (D11: dev Free, prod Pro) ⛔ founder question 7 for Pro
+- [x] Asymmetric JWT signing keys: JWKS serves an ES256 key
+- [ ] Remaining dashboard settings (runbook §2): disable legacy JWT secret/keys, Data API auto-expose off, email confirm, password policy (10, letters+digits), redirect URLs, SSL enforced
 - [ ] Custom SMTP for Auth emails ⛔ founder question 6 (sender domain)
-- [ ] `supabase db push --dry-run`, then `db push` to dev, check with the runbook §3 queries, then prod
+- [x] Migrations pushed to `d4y` (3 migrations, no seed). Verified: 21 tables all with RLS, no browser-role grants or callable functions, 8 program modules, 3 auth triggers, advisors clean, public key gets 401 on every table
+- [ ] Push to the second project once it exists
 - [ ] First admin (runbook §4)
 - [ ] Verify one real connection to the pooler with the Supabase root CA before relying on the prod CA check
 - [ ] GCP: Artifact Registry repo, Secret Manager secrets (`DATABASE_URL`, `SUPABASE_URL`, `DATABASE_CA_CERT`), service account, Workload Identity Federation for GitHub
