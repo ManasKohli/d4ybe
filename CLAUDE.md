@@ -1,6 +1,6 @@
 # d4ybe
 
-Backend for the D4Y Dental Pathway Program. The reviewed plan is `docs/architecture.md`; read it before changing anything structural. See `README.md` for stack, structure and conventions.
+Backend for the D4Y Dental Pathway Program. The reviewed plan is `docs/architecture.md`; read it before changing anything structural. What's done and what's left for the pilot is tracked in `docs/pilot-tracker.md`: tick items in the PR that finishes them. See `README.md` for stack, structure and conventions.
 
 ## Skill routing
 
