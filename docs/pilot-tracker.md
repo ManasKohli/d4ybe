@@ -56,7 +56,8 @@ Recommended order while founder answers are pending: **finish step 1 → step 2 
 - [ ] Password policy (min 10, letters + digits) and secure password change: confirm saved
 - [x] `.env` with the hosted pooler `DATABASE_URL` + CA certificate; certificate-verified connection works (TLS 1.3, `aws-1-ca-central-1.pooler.supabase.com:6543`)
 - [x] Migrations pushed to `d4y` (3 migrations, no seed). Verified: 21 tables all with RLS, no browser-role grants or callable functions, 8 program modules, 3 auth triggers, advisors clean, public key gets 401 on every table
-- [ ] First admin (runbook §4)
+- [x] First admin: invited from the dashboard, promoted with the runbook §4 SQL (one profile, role `admin`)
+- [ ] Site URL saved as `http://localhost:5173` (the first invite landed on `localhost:3000`)
 - [ ] FE (d4yfe): Supabase login + role routing, calling `GET /me`
 
 ## Step 2 · Student read side ⬜
