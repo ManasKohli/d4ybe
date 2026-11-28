@@ -15,15 +15,16 @@ Last updated: 2026-11-28 (hosted project linked and migrated)
 | Step | What | Status |
 |---|---|---|
 | 0 | Scaffold, CI, `/health` (T1) | ✅ done (#3) |
-| 1 | Foundation: database, auth, `/me`, hosted Supabase, first deploy | 🟡 code done (#4); hosted setup and deploy left |
+| 1 | Foundation: database, auth, `/me`, hosted Supabase | 🟡 code and hosted DB done; dashboard settings, first admin, FE login left |
 | 2 | Student read side + onboarding | ⬜ not started |
 | 2b | Content: lessons, materials, uploads (T10) | ⛔ founder questions 8, 9, 12 |
 | 3 | Payments (T6) | ⛔ founder questions 1, 2, 5 |
 | 4 | Submissions and reviews (T5, T11) | ⬜ not started |
 | 5 | Admin | ⬜ not started |
 | — | Cross-cutting: API contract, rate limits, ops | ⬜ not started |
+| 6 | Deploy to GCP (Cloud Run) | ⏸ at the end, by the founders |
 
-Recommended order while founder answers are pending: **finish step 1 → step 2 → step 4 → step 5**, then 2b and 3 as answers arrive. Step 4 comes before 3 because review rounds can be granted by an admin (`POST /admin/credits`) before Stripe exists.
+Recommended order while founder answers are pending: **finish step 1 → step 2 → step 4 → step 5**, then 2b and 3 as answers arrive, and step 6 (deploy) last. Until then everything runs locally against `supabase start` or the hosted `d4y` project. Step 4 comes before 3 because review rounds can be granted by an admin (`POST /admin/credits`) before Stripe exists.
 
 ---
 
@@ -57,9 +58,6 @@ Recommended order while founder answers are pending: **finish step 1 → step 2 
 - [ ] Push to the second project once it exists
 - [ ] First admin (runbook §4)
 - [ ] Verify one real connection to the pooler with the Supabase root CA before relying on the prod CA check
-- [ ] GCP: Artifact Registry repo, Secret Manager secrets (`DATABASE_URL`, `SUPABASE_URL`, `DATABASE_CA_CERT`), service account, Workload Identity Federation for GitHub
-- [ ] `.github/workflows/deploy.yml`: build, push image, deploy Cloud Run (Toronto/Montréal, min 0, max 3, 512 MB)
-- [ ] First Cloud Run deploy; `GET /health` and `GET /me` work against the dev project
 - [ ] FE (d4yfe): Supabase login + role routing, calling `GET /me`
 
 ## Step 2 · Student read side ⬜
@@ -121,12 +119,24 @@ Recommended order while founder answers are pending: **finish step 1 → step 2 
 
 - [ ] API contract (T7): zod-to-openapi, `npm run openapi`, committed `openapi.json`, CI staleness check; FE `gen:api`
 - [ ] Rate limits (T9): ~5/min checkout, 10/min upload-url, loose global limit
-- [ ] Cost guards (T9): GCP budget alert, Cloud Run max 3, Artifact Registry cleanup policy
 - [ ] DB statement timeout via a dedicated least-privilege API role (review note on #4)
 - [ ] `SUPABASE_JWT_ISSUER` override if a custom Auth domain is used (review note on #4)
 - [ ] Build repository row types from `database.types.ts` (review note on #4)
 - [ ] FE repo: Node 20 → 24 (`TODOS.md`)
 - [ ] Pilot-readiness pass: `/qa` on staging, a security review of the full API, restore-from-backup test on prod
+
+## Step 6 · Deploy to GCP ⏸ at the end, by the founders
+
+The founders will set up the GCP project later (2026-11-28). Until then the API only runs locally; nothing in steps 2–5 depends on Cloud Run. The Dockerfile and its CI smoke test already exist, so the image is ready.
+
+- [ ] GCP project (owner and billing: founder question 14); Firebase added to the same project for FE hosting (D41)
+- [ ] Artifact Registry repo + cleanup policy (keep ~10 images)
+- [ ] Secret Manager: `DATABASE_URL` (shared pooler, port 6543), `SUPABASE_URL`, `DATABASE_CA_CERT`, later `SUPABASE_SECRET_KEY`, `STRIPE_*`
+- [ ] Service account + Workload Identity Federation for GitHub Actions (no keys)
+- [ ] `.github/workflows/deploy.yml`: build, push image, deploy Cloud Run (Toronto or Montréal, min 0, max 3, 512 MB, concurrency 80)
+- [ ] First deploy; `GET /health` and `GET /me` work against the hosted project; `ALLOWED_ORIGINS` set to the FE origins
+- [ ] Cost guards (T9): GCP budget alert, max instances 3
+- [ ] Cloud Logging alert on non-2xx `/webhooks/stripe` (once payments exist)
 
 ---
 
@@ -147,4 +157,4 @@ From [architecture.md section 10](architecture.md#10-open-questions-for-founders
 | 11 | Video answers as links OK? | Video-link answers (step 4) |
 | 12 | Free preview chapters? | Step 2b |
 | 13 | Prototype features (booking, ratings, follow-ups…) in or out? | Scope check |
-| 14 | Who owns GCP/Firebase and DNS | Deploy, custom domain |
+| 14 | Who owns GCP/Firebase and DNS | Step 6 (deploy), custom domain |
