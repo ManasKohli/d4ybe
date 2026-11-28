@@ -15,7 +15,7 @@ Last updated: 2026-11-28 (hosted project linked and migrated)
 | Step | What | Status |
 |---|---|---|
 | 0 | Scaffold, CI, `/health` (T1) | ✅ done (#3) |
-| 1 | Foundation: database, auth, `/me`, hosted Supabase | 🟡 code, hosted DB, hardening and connection done; first admin, FE login left |
+| 1 | Foundation: database, auth, `/me`, hosted Supabase | ✅ done (#4, d4yfe #31); SMTP, prod project and sign-up mode moved to Later |
 | Later | SMTP, prod project, sign-up mode | ⏸ founder questions 5, 6, 7 |
 | 2 | Student read side + onboarding | ⬜ not started |
 | 2b | Content: lessons, materials, uploads (T10) | ⛔ founder questions 8, 9, 12 |
@@ -33,7 +33,7 @@ Recommended order while founder answers are pending: **finish step 1 → step 2 
 
 - [x] TypeScript, ESLint layering rules, Vitest, folder skeleton, `GET /health`, Dockerfile, CI (T1, #3)
 
-## Step 1 · Foundation 🟡
+## Step 1 · Foundation ✅
 
 **Done (#4)**
 - [x] Full schema from section 4 except content: identity, catalog/payments, access, learning, mentoring, reference (T4)
@@ -58,7 +58,7 @@ Recommended order while founder answers are pending: **finish step 1 → step 2 
 - [x] Migrations pushed to `d4y` (3 migrations, no seed). Verified: 21 tables all with RLS, no browser-role grants or callable functions, 8 program modules, 3 auth triggers, advisors clean, public key gets 401 on every table
 - [x] First admin: invited from the dashboard, promoted with the runbook §4 SQL (one profile, role `admin`)
 - [x] Site URL saved as `http://localhost:5173`
-- [ ] FE (d4yfe): Supabase login + role routing, calling `GET /me`
+- [x] FE (d4yfe #31): Supabase sign-in, set-password page (invite/reset links), role routing from `GET /me`, sign out
 
 ## Step 2 · Student read side ⬜
 
