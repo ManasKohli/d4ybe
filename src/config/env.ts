@@ -29,6 +29,21 @@ const envSchema = z.object({
           }),
       ),
     ),
+  // Supabase shared pooler, transaction mode (port 6543). Never logged.
+  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  // Project URL (https://<ref>.supabase.co, or http://127.0.0.1:54321 locally). Token issuer and
+  // JWKS endpoint are derived from it (section 2, token check).
+  SUPABASE_URL: z
+    .url({ protocol: /^https?$/ })
+    .refine((value) => URL.canParse(value) && new URL(value).origin === value, {
+      message: 'Must be a bare origin like https://abc.supabase.co (no path or trailing slash)',
+    }),
+  // PEM of Supabase's root CA (Dashboard → Database → SSL). When set, the pooler's certificate is
+  // verified; otherwise the connection is still encrypted but the server isn't authenticated.
+  DATABASE_CA_CERT: z
+    .string()
+    .refine((value) => value.includes('-----BEGIN CERTIFICATE-----'), { message: 'Must be a PEM certificate' })
+    .optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

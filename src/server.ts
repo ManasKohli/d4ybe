@@ -1,5 +1,6 @@
 import { createApp } from './app.js';
 import { loadEnv } from './config/env.js';
+import { createDb } from './db/client.js';
 import { createLogger } from './lib/logger.js';
 
 // Cloud Run sends SIGKILL ~10 s after SIGTERM; give up a little earlier so the log line lands.
@@ -7,7 +8,9 @@ const SHUTDOWN_TIMEOUT_MS = 8_000;
 
 const env = loadEnv();
 const logger = createLogger(env);
-const app = createApp({ env, logger });
+// postgres.js connects lazily, so /health answers even while the pooler is unreachable.
+const sql = createDb({ url: env.DATABASE_URL, caCert: env.DATABASE_CA_CERT });
+const app = createApp({ env, logger, sql });
 
 const server = app.listen(env.PORT, (err?: Error) => {
   // Express 5 passes bind errors (EADDRINUSE, EACCES) here instead of throwing.
@@ -36,7 +39,14 @@ function shutdown(signal: NodeJS.Signals): void {
       logger.error({ err }, 'error while closing server');
       process.exit(1);
     }
-    process.exit(0);
+    // In-flight requests are done; drain the pool so the pooler sees clean disconnects.
+    sql.end({ timeout: 5 }).then(
+      () => process.exit(0),
+      (endErr: unknown) => {
+        logger.error({ err: endErr }, 'error while closing database pool');
+        process.exit(1);
+      },
+    );
   });
   server.closeIdleConnections();
 }

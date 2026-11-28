@@ -32,10 +32,41 @@ jobs:
         run: docker build -t d4ybe:ci .
       - name: Smoke test /health
         run: |
-          docker run -d --name api -p 8080:8080 d4ybe:ci
+          # Placeholder values: /health never touches the database or Auth.
+          docker run -d --name api -p 8080:8080 \
+            -e DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:1/unused \
+            -e SUPABASE_URL=http://127.0.0.1:54321 \
+            d4ybe:ci
           for i in $(seq 1 20); do
             curl -fsS http://localhost:8080/health && exit 0
             sleep 1
           done
           docker logs api
           exit 1
+
+  database:
+    # Migrations, seed, RLS lockdown, triggers and /me end to end against a fresh local Supabase.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.3.0
+      - run: npm ci
+      - name: Start local Supabase (applies migrations and seed.sql)
+        run: supabase start -x studio,imgproxy,vector,logflare,edge-runtime,supavisor,realtime,mailpit,storage-api
+      - name: Lint the schema
+        run: supabase db lint --level warning --fail-on warning
+      - name: Integration tests
+        run: npm run test:db
+      - name: Generated types are up to date
+        run: |
+          npm run db:types
+          git diff --exit-code src/db/database.types.ts || {
+            echo "::error::src/db/database.types.ts is stale. Run npm run db:types and commit it."
+            exit 1
+          }

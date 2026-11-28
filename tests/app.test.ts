@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { errorHandler } from '../src/middleware/error-handler.js';
 import { AppError } from '../src/errors/app-error.js';
 import { createApp } from '../src/app.js';
+import { createDb } from '../src/db/client.js';
 import { createHttpLogger } from '../src/lib/http-logger.js';
 import { buildTestApp, TEST_ORIGIN, testEnv } from './helpers/test-app.js';
 
@@ -19,10 +20,12 @@ describe('GET /health', () => {
 });
 
 describe('unknown routes', () => {
-  it('return 404 in the standard error shape', async () => {
+  // Auth runs before the 404 (section 3), so a signed-out caller can't map the API surface.
+  // The authenticated 404 is covered end to end in tests/db/me.test.ts.
+  it('answer 401 to a signed-out caller, in the standard error shape', async () => {
     const res = await request(buildTestApp()).get('/nope');
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { code: 'not_found', message: 'No route for GET /nope' } });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { code: 'unauthorized', message: 'Authentication required' } });
   });
 });
 
@@ -201,13 +204,13 @@ describe('request logging', () => {
   it('logs method, path and status but never headers, tokens or query strings', async () => {
     const lines: string[] = [];
     const logger = pino({ messageKey: 'message' }, { write: (line: string) => void lines.push(line) });
-    const app = createApp({ env: testEnv(), logger });
+    const app = createApp({ env: testEnv(), logger, sql: createDb({ url: testEnv().DATABASE_URL, max: 1 }) });
 
     await request(app).get('/nope?token=abc123').set('Authorization', 'Bearer secret-jwt').set('Cookie', 'sid=s3cret');
 
     const log = lines.join('\n');
     expect(log).toContain('"path":"/nope"');
-    expect(log).toContain('"statusCode":404');
+    expect(log).toContain('"statusCode":401');
     expect(log).not.toContain('secret-jwt');
     expect(log).not.toContain('s3cret');
     expect(log).not.toContain('abc123');
@@ -235,7 +238,7 @@ describe('request logging', () => {
   it('does not log health checks, with or without a query string', async () => {
     const lines: string[] = [];
     const logger = pino({ messageKey: 'message' }, { write: (line: string) => void lines.push(line) });
-    const app = createApp({ env: testEnv(), logger });
+    const app = createApp({ env: testEnv(), logger, sql: createDb({ url: testEnv().DATABASE_URL, max: 1 }) });
     await request(app).get('/health');
     await request(app).get('/health?probe=1');
     expect(lines).toHaveLength(0);

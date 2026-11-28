@@ -11,7 +11,14 @@ afterEach(() => blocker?.close());
 
 function run(env: Record<string, string>): Promise<{ code: number | null; output: string }> {
   return new Promise((resolve) => {
-    const child = spawn(TSX, [SERVER], { env: { ...process.env, NODE_ENV: 'production', LOG_LEVEL: 'info', ...env } });
+    const child = spawn(TSX, [SERVER], { env: {
+        ...process.env,
+        NODE_ENV: 'production',
+        LOG_LEVEL: 'info',
+        DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:1/unused',
+        SUPABASE_URL: 'http://127.0.0.1:54321',
+        ...env,
+      }, });
     let output = '';
     child.stdout.on('data', (d: Buffer) => (output += d.toString()));
     child.stderr.on('data', (d: Buffer) => (output += d.toString()));
