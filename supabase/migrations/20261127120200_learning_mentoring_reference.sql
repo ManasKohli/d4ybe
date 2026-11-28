@@ -68,7 +68,9 @@ create table public.reviews (
   id                 uuid primary key default gen_random_uuid(),
   submission_id      uuid not null references public.submissions (id) on delete cascade,
   mentor_id          uuid not null references public.profiles (id) on delete restrict,
-  status             text not null default 'assigned' check (status in ('assigned', 'in_progress', 'completed', 'reassigned')),
+  -- D16: 'reassigned' rows are history after an admin moves the review; 'cancelled' is an admin
+  -- cancel whose round access.service returned (+1 credit).
+  status             text not null default 'assigned' check (status in ('assigned', 'in_progress', 'completed', 'reassigned', 'cancelled')),
   assigned_at        timestamptz not null default now(),
   due_at             timestamptz not null,
   scores             jsonb not null default '{}' check (jsonb_typeof(scores) = 'object'),
@@ -82,9 +84,10 @@ create table public.reviews (
   check ((status = 'completed') = (completed_at is not null)),
   check ((feedback_file_path is null) = (feedback_file_name is null))
 );
--- One live review per submission; reassigned rows stay as history.
+-- One live review per submission; reassigned and cancelled rows stay as history.
 create unique index reviews_one_active_per_submission on public.reviews (submission_id)
-  where status <> 'reassigned';
+  where status not in ('reassigned', 'cancelled');
+create index reviews_submission_idx on public.reviews (submission_id);
 create index reviews_mentor_status_idx on public.reviews (mentor_id, status);
 create trigger reviews_updated_at before update on public.reviews
   for each row execute function public.set_updated_at();
@@ -118,13 +121,19 @@ create table public.volunteer_hours (
   student_id uuid references public.profiles (id) on delete set null,
   hours      numeric(4, 2) not null check (hours > 0 and hours <= 24),
   source     text not null check (source in ('review', 'manual')),
-  source_id  uuid,
+  -- The completed review that logged these hours. The hours outlive the review (a mentor's
+  -- volunteer record stays if the student is deleted), so the link is nulled, not cascaded.
+  -- The existence check is deferred to commit: deleting a student reaches this row by two
+  -- cascade paths (student_id, and review_id via submissions → reviews), and an immediate
+  -- check on the first update would see the review already gone. (The SET NULL still runs at
+  -- once.) Mentor services set review_id for every source = 'review' row they write.
+  review_id  uuid references public.reviews (id) on delete set null deferrable initially deferred,
   created_at timestamptz not null default now(),
-  check ((source = 'review') = (source_id is not null))
+  check (source = 'review' or review_id is null)
 );
 -- A completed review logs its hours once.
-create unique index volunteer_hours_one_per_review on public.volunteer_hours (source_id)
-  where source = 'review';
+create unique index volunteer_hours_one_per_review on public.volunteer_hours (review_id)
+  where review_id is not null;
 create index volunteer_hours_mentor_date_idx on public.volunteer_hours (mentor_id, date);
 create index volunteer_hours_student_idx on public.volunteer_hours (student_id);
 
@@ -165,6 +174,8 @@ create index audit_log_actor_idx on public.audit_log (actor_id);
 create index audit_log_at_idx on public.audit_log (at);
 create trigger audit_log_append_only before update or delete on public.audit_log
   for each row execute function public.reject_change();
+create trigger audit_log_no_truncate before truncate on public.audit_log
+  for each statement execute function public.reject_truncate();
 
 -- ---------------------------------------------------------------------------------------------
 -- RLS on, no policies.

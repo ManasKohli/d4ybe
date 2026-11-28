@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { hasDb, SEED, signIn, TEST_PUBLISHABLE_KEY, TEST_SUPABASE_URL, testDb } from '../helpers/db.js';
+import { hasDb, inRollback, SEED, signIn, TEST_PUBLISHABLE_KEY, TEST_SUPABASE_URL, testDb } from '../helpers/db.js';
 
 // Section 8: RLS on, no policies, and the browser-facing roles hold nothing in public.
 describe.skipIf(!hasDb)('database lockdown', () => {
@@ -36,6 +36,17 @@ describe.skipIf(!hasDb)('database lockdown', () => {
       where n.nspname = 'public' and has_function_privilege(r.rolname, p.oid, 'execute')
     `;
     expect(executable).toEqual([]);
+  });
+
+  it('keeps functions created by later migrations unreachable from the browser roles', async () => {
+    await inRollback(sql, async (tx) => {
+      await tx`create function public.zz_probe() returns int language sql as 'select 1'`;
+      const [row] = await tx`
+        select has_function_privilege('anon', 'public.zz_probe()', 'execute') as anon,
+               has_function_privilege('authenticated', 'public.zz_probe()', 'execute') as authed
+      `;
+      expect(row).toEqual({ anon: false, authed: false });
+    });
   });
 
   it('pins search_path on every function in public (no search_path hijacking)', async () => {
@@ -112,8 +123,13 @@ describe.skipIf(!hasDb)('Data API (PostgREST) exposure', () => {
     expect(res.ok).toBe(false);
 
     const sql = testDb();
-    const [row] = await sql<{ role: string }[]>`select role from public.profiles where id = ${SEED.student.id}`;
-    await sql.end();
-    expect(row?.role).toBe('student');
+    try {
+      const [row] = await sql<{ role: string }[]>`select role from public.profiles where id = ${SEED.student.id}`;
+      expect(row?.role).toBe('student');
+    } finally {
+      // If a regression ever let the write through, don't leave the shared seed row promoted.
+      await sql`update public.profiles set role = 'student' where id = ${SEED.student.id}`;
+      await sql.end();
+    }
   });
 });

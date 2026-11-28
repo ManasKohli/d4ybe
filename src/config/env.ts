@@ -46,10 +46,25 @@ const envSchema = z.object({
     .optional(),
 });
 
+const LOCAL_DB_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+// Production must authenticate the pooler, not just encrypt to it: without the CA, anyone on
+// the network path could pose as the database and read the password and every row (section 8).
+const checkedEnvSchema = envSchema.superRefine((env, ctx) => {
+  const local = URL.canParse(env.DATABASE_URL) && LOCAL_DB_HOSTS.has(new URL(env.DATABASE_URL).hostname);
+  if (env.NODE_ENV === 'production' && !local && !env.DATABASE_CA_CERT) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['DATABASE_CA_CERT'],
+      message: 'Required in production for a remote database (Supabase root CA, PEM)',
+    });
+  }
+});
+
 export type Env = z.infer<typeof envSchema>;
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const result = envSchema.safeParse(source);
+  const result = checkedEnvSchema.safeParse(source);
   if (!result.success) {
     throw new Error(`Invalid environment variables:\n${z.prettifyError(result.error)}`);
   }

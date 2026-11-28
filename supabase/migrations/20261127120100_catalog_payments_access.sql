@@ -94,26 +94,33 @@ create index credit_ledger_granted_by_idx on public.credit_ledger (granted_by);
 
 create trigger credit_ledger_append_only before update or delete on public.credit_ledger
   for each row execute function public.reject_change();
+create trigger credit_ledger_no_truncate before truncate on public.credit_ledger
+  for each statement execute function public.reject_truncate();
 
--- Backstop for D16: a balance can never go below zero. access.service still takes the
--- student_profiles row lock first; this catches a caller that forgot to.
+-- Backstop for D16: a balance can never go below zero, even under concurrent debits.
+-- The transaction-scoped advisory lock serialises writes per (student, kind), and because
+-- each statement in READ COMMITTED takes a fresh snapshot, the sum after the lock sees every
+-- debit committed before it. This relies on READ COMMITTED (the API's default): under
+-- REPEATABLE READ the snapshot would predate the lock. access.service still takes the
+-- student_profiles row lock for its own read-then-write logic.
 create function public.check_credit_balance()
 returns trigger
 language plpgsql
 set search_path = ''
 as $$
 begin
+  perform pg_advisory_xact_lock(hashtextextended('credit_ledger:' || new.student_id::text || ':' || new.kind, 0));
   if new.delta < 0 and (
     select coalesce(sum(delta), 0) from public.credit_ledger
     where student_id = new.student_id and kind = new.kind
-  ) < 0 then
+  ) + new.delta < 0 then
     raise exception 'no % credits left', new.kind using errcode = '23514';
   end if;
   return new;
 end;
 $$;
 
-create trigger credit_ledger_balance after insert on public.credit_ledger
+create trigger credit_ledger_balance before insert on public.credit_ledger
   for each row execute function public.check_credit_balance();
 
 alter table public.products        enable row level security;

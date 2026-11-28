@@ -16,6 +16,8 @@ grant usage on schema public to anon, authenticated; -- PostgREST needs usage to
 alter default privileges for role postgres in schema public revoke all on tables from anon, authenticated;
 alter default privileges for role postgres in schema public revoke all on sequences from anon, authenticated;
 alter default privileges for role postgres in schema public revoke all on functions from anon, authenticated, public;
+-- EXECUTE to PUBLIC is a global default that a per-schema rule can't remove; revoke it globally too.
+alter default privileges for role postgres revoke execute on functions from public;
 
 -- ---------------------------------------------------------------------------------------------
 -- Shared helpers
@@ -45,6 +47,17 @@ begin
   if pg_trigger_depth() > 1 then
     return case when tg_op = 'DELETE' then old else new end;
   end if;
+  raise exception '% is append-only', tg_table_name using errcode = '42501';
+end;
+$$;
+
+-- Row triggers don't see TRUNCATE; this statement trigger closes that gap.
+create function public.reject_truncate()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
   raise exception '% is append-only', tg_table_name using errcode = '42501';
 end;
 $$;
@@ -131,6 +144,7 @@ create table public.invites (
   created_at  timestamptz not null default now(),
   accepted_at timestamptz
 );
+create index invites_invited_by_idx on public.invites (invited_by);
 
 create table public.student_profiles (
   user_id           uuid primary key references public.profiles (id) on delete cascade,
@@ -165,9 +179,11 @@ create trigger mentor_profiles_updated_at before update on public.mentor_profile
 
 -- ---------------------------------------------------------------------------------------------
 -- New auth user → profile (D18, D23).
--- The role comes from a pending invite ONLY when Supabase created the user through an invite
--- (auth.users.invited_at is set by inviteUserByEmail). A self-sign-up with an invited address,
--- or anything in raw_user_meta_data, never grants staff access.
+-- Everyone starts as a student. The role comes from a pending invite ONLY when Supabase
+-- creates the user through an invite: GoTrue inserts the row first and sets
+-- auth.users.invited_at in a follow-up UPDATE (handle_user_invited below), so both paths are
+-- covered. A self-sign-up with an invited address, or anything in raw_user_meta_data, never
+-- grants staff access.
 -- ---------------------------------------------------------------------------------------------
 create function public.handle_new_user()
 returns trigger
@@ -212,6 +228,54 @@ $$;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- GoTrue's invite flow: the user row exists (as a student) and invited_at is set afterwards.
+-- An account that already has a password was created by someone signing up themselves. If a
+-- staff invite is pending for it, the whole invite is refused (raise, so GoTrue rolls back and
+-- sends no link): promoting it would hand staff access to whoever set that password, and even
+-- a plain confirmation link would confirm their account. An admin deletes that account in
+-- Authentication → Users and invites again.
+create function public.handle_user_invited()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_role text;
+begin
+  if coalesce(new.encrypted_password, '') <> '' then
+    if exists (select 1 from public.invites where email = lower(new.email) and accepted_at is null) then
+      raise exception 'an account already exists for %; delete it before inviting', lower(new.email)
+        using errcode = 'P0001';
+    end if;
+    return new;
+  end if;
+
+  update public.invites
+     set accepted_at = now()
+   where email = lower(new.email) and accepted_at is null
+  returning role into v_role;
+  if v_role is null then
+    return new;
+  end if;
+
+  update public.profiles set role = v_role where id = new.id and role = 'student';
+  -- The placeholder student row the insert trigger made; never one holding a seat.
+  delete from public.student_profiles where user_id = new.id and cohort_id is null;
+  if v_role = 'mentor' then
+    insert into public.mentor_profiles (user_id) values (new.id) on conflict (user_id) do nothing;
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger on_auth_user_invited
+  after update of invited_at on auth.users
+  for each row
+  when (old.invited_at is null and new.invited_at is not null)
+  execute function public.handle_user_invited();
 
 -- Keep profiles.email in step when a user confirms an email change.
 create function public.handle_user_email_change()

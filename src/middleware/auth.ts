@@ -15,6 +15,21 @@ export interface AuthOptions {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Errors that mean we couldn't get Supabase's keys, as opposed to a bad token: a network
+ * failure, a timeout, a non-200 or non-JSON answer (jose throws a bare JOSEError for those),
+ * or a body that isn't a key set. Everything else jose throws is about the token itself.
+ */
+function isKeySetUnavailable(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (!(err instanceof joseErrors.JOSEError)) return true;
+  return (
+    err instanceof joseErrors.JWKSTimeout ||
+    err instanceof joseErrors.JWKSInvalid ||
+    err.constructor === joseErrors.JOSEError
+  );
+}
+
 export function supabaseJwks(supabaseUrl: string): JWTVerifyGetKey {
   return createRemoteJWKSet(new URL('/auth/v1/.well-known/jwks.json', supabaseUrl), {
     cooldownDuration: 30_000,
@@ -56,8 +71,8 @@ export function authenticate({ supabaseUrl, loadUser, keys = supabaseJwks(supaba
       }
       subject = payload.sub;
     } catch (err) {
-      if (err instanceof joseErrors.JWKSTimeout || (err instanceof Error && !(err instanceof joseErrors.JOSEError))) {
-        // Network failure fetching the JWKS: our problem, not the caller's.
+      if (isKeySetUnavailable(err)) {
+        // Supabase Auth is unreachable or misbehaving: our problem, not the caller's.
         next(new AppError(503, 'auth_unavailable', 'Sign-in is temporarily unavailable'));
         return;
       }
@@ -68,7 +83,7 @@ export function authenticate({ supabaseUrl, loadUser, keys = supabaseJwks(supaba
     try {
       const user = await loadUser(subject);
       if (!user) {
-        // A valid token for a deleted account.
+        // A valid token for a deleted or banned account.
         next(AppError.unauthorized('Invalid or expired token'));
         return;
       }

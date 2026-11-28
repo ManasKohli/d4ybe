@@ -5,17 +5,19 @@ const track = z.enum(['Canada', 'US']);
 
 /** GET /me: who the caller is and, for students, what they can access (section 6). */
 export const meResponse = z.object({
-  id: z.uuid(),
-  email: z.email(),
+  // Output shapes describe what the database already holds; they don't re-validate it.
+  // Auth accepts some addresses zod's email check rejects, and that must never 500 GET /me.
+  id: z.guid(),
+  email: z.string(),
   fullName: z.string().nullable(),
   role: z.enum(ROLES),
   student: z
     .object({
       track: track.nullable(),
       cycle: z.string().nullable(),
-      cohortId: z.uuid().nullable(),
+      cohortId: z.guid().nullable(),
       hasSeat: z.boolean(),
-      primaryMentorId: z.uuid().nullable(),
+      primaryMentorId: z.guid().nullable(),
       enrolledModules: z.array(z.string()),
       credits: z.object({ review: z.number().int(), oneOnOne: z.number().int() }),
     })

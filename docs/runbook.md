@@ -74,4 +74,10 @@ Later mentors and admins are invited from the app (`POST /admin/mentors/invite`)
 
 ## 5. API secrets (Cloud Run)
 
-`DATABASE_URL` (the **shared pooler** string from Connect → Transaction pooler, port 6543), `SUPABASE_URL` (`https://<ref>.supabase.co`, no trailing slash) and `DATABASE_CA_CERT` go in Secret Manager. The API refuses to start if `DATABASE_URL` or `SUPABASE_URL` is missing or malformed.
+`DATABASE_URL` (the **shared pooler** string from Connect → Transaction pooler, port 6543), `SUPABASE_URL` (`https://<ref>.supabase.co`, no trailing slash) and `DATABASE_CA_CERT` go in Secret Manager. The API refuses to start if `DATABASE_URL` or `SUPABASE_URL` is missing or malformed, or, in production, if `DATABASE_CA_CERT` is missing for a remote database.
+
+## 6. Invites and squatted addresses
+
+An invite is honoured only for an account Supabase creates through the invite (no password yet). If someone already signed up with that address themselves, the invite stays pending and the account stays a student, on purpose: whoever set that password would otherwise get staff access. Check with `select email, accepted_at from public.invites where accepted_at is null;`, delete the unconfirmed account in Authentication → Users, and invite again.
+
+Banning a user in Authentication → Users cuts off API access on their next request (the API checks `banned_until`); their open sessions don't need to expire first.

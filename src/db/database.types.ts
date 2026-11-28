@@ -461,14 +461,14 @@ isOneToOne: false
                   ]
                 },"volunteer_hours": {
                   Row: {
-                    "activity": string,"created_at": string,"date": string,"hours": number,"id": string,"mentor_id": string,"source": string,"source_id": string | null,"student_id": string | null
+                    "activity": string,"created_at": string,"date": string,"hours": number,"id": string,"mentor_id": string,"review_id": string | null,"source": string,"student_id": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "activity": string,"created_at"?: string,"date": string,"hours": number,"id"?: string,"mentor_id": string,"source": string,"source_id"?: string | null,"student_id"?: string | null
+                    "activity": string,"created_at"?: string,"date": string,"hours": number,"id"?: string,"mentor_id": string,"review_id"?: string | null,"source": string,"student_id"?: string | null
                   }
                   Update: {
-                    "activity"?: string,"created_at"?: string,"date"?: string,"hours"?: number,"id"?: string,"mentor_id"?: string,"source"?: string,"source_id"?: string | null,"student_id"?: string | null
+                    "activity"?: string,"created_at"?: string,"date"?: string,"hours"?: number,"id"?: string,"mentor_id"?: string,"review_id"?: string | null,"source"?: string,"student_id"?: string | null
                   }
                   Relationships: [
                     {
@@ -476,6 +476,12 @@ isOneToOne: false
       columns: ["mentor_id"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "volunteer_hours_review_id_fkey"
+      columns: ["review_id"]
+isOneToOne: false
+      referencedRelation: "reviews"
       referencedColumns: ["id"]
     },{
       foreignKeyName: "volunteer_hours_student_id_fkey"

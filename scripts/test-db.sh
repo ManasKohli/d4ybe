@@ -12,5 +12,7 @@ value() { printf '%s\n' "$status" | sed -n "s/^$1=\"\(.*\)\"$/\1/p"; }
 export TEST_DATABASE_URL="$(value DB_URL)"
 export TEST_SUPABASE_URL="$(value API_URL)"
 export TEST_SUPABASE_PUBLISHABLE_KEY="$(value PUBLISHABLE_KEY)"
+# Local stack's secret key: only used to drive the Auth admin API in tests (invites).
+export TEST_SUPABASE_SECRET_KEY="$(value SECRET_KEY)"
 
 exec npx vitest run tests/db "$@"

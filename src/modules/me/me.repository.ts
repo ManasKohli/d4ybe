@@ -26,8 +26,19 @@ export interface CreditRow {
   balance: number;
 }
 
+/**
+ * The caller's role, or null when the account is gone or banned. Checking the ban here, on
+ * every request, closes the window where a banned user's unexpired token still works.
+ */
 export async function findRole(sql: Sql, id: string): Promise<Role | null> {
-  const [row] = await sql<{ role: Role }[]>`select role from public.profiles where id = ${id}`;
+  const [row] = await sql<{ role: Role }[]>`
+    select p.role
+    from public.profiles p
+    join auth.users u on u.id = p.id
+    where p.id = ${id}
+      and (u.banned_until is null or u.banned_until <= now())
+      and u.deleted_at is null
+  `;
   return row?.role ?? null;
 }
 

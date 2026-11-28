@@ -67,20 +67,35 @@ export async function pgError(tx: TransactionSql, fn: (sp: TransactionSql) => Pr
 
 interface AuthUserInput {
   email?: string;
+  /** Create the user the way GoTrue's invite does: insert with no password, then set invited_at. */
   invited?: boolean;
+  /** A bcrypt hash; set for self-sign-ups (GoTrue stores '' for invited users). */
+  passwordHash?: string;
   metadata?: Record<string, unknown>;
 }
 
-/** Insert an auth user the way GoTrue does, which fires the profile trigger. */
+/** Insert an auth user the way GoTrue does, which fires the profile triggers. */
 export async function createAuthUser(tx: TransactionSql, input: AuthUserInput = {}): Promise<string> {
   const id = randomUUID();
   const email = input.email ?? `${id}@test.d4y.local`;
   await tx`
-    insert into auth.users (instance_id, id, aud, role, email, raw_user_meta_data, invited_at, created_at, updated_at)
+    insert into auth.users (instance_id, id, aud, role, email, encrypted_password, raw_user_meta_data, created_at, updated_at)
     values (
       '00000000-0000-0000-0000-000000000000', ${id}, 'authenticated', 'authenticated', ${email},
-      ${tx.json((input.metadata ?? {}))}, ${input.invited ? new Date() : null}, now(), now()
+      ${input.passwordHash ?? ''}, ${tx.json((input.metadata ?? {}))}, now(), now()
     )
   `;
+  // GoTrue's invite (signupNewUser, then sendInvite) sets invited_at in a second statement.
+  if (input.invited) await tx`update auth.users set invited_at = now() where id = ${id}`;
   return id;
+}
+
+/** Supabase Auth admin API (local stack only), for tests that must go through real GoTrue. */
+export async function authAdmin(path: string, body: unknown): Promise<Response> {
+  const key = process.env.TEST_SUPABASE_SECRET_KEY ?? '';
+  return fetch(`${TEST_SUPABASE_URL}/auth/v1/admin/${path}`, {
+    method: 'POST',
+    headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 }

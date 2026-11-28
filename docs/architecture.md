@@ -230,7 +230,7 @@ FE status labels (not-started, in-review, feedback-ready, revise, due-soon, over
 | Table | Key columns | Notes |
 |---|---|---|
 | events | title, kind (live/group/drop-in), module_slug, track, starts_at, duration_min, join_url | Workshops, office hours |
-| volunteer_hours | mentor_id, date, activity, student_id, hours, source (review/manual), source_id | Auto-logged from completed reviews; sessions entered by hand (D2) |
+| volunteer_hours | mentor_id, date, activity, student_id, hours, source (review/manual), review_id (FK reviews, set null; was source_id) | Auto-logged from completed reviews; sessions entered by hand (D2). The hours outlive the review |
 
 ### Reference
 

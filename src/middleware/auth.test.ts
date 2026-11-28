@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import express from 'express';
-import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type JWTVerifyGetKey } from 'jose';
+import { createLocalJWKSet, createRemoteJWKSet, exportJWK, generateKeyPair, SignJWT, type JWTVerifyGetKey } from 'jose';
 import { pino } from 'pino';
 import request from 'supertest';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AuthUser } from '../types/auth.js';
 import { authenticate, type LoadUser } from './auth.js';
 import { errorHandler } from './error-handler.js';
@@ -123,6 +125,31 @@ describe('authenticate', () => {
     const res = await request(app(undefined, down)).get('/whoami').set('Authorization', `Bearer ${await token()}`);
     expect(res.status).toBe(503);
     expect(res.body.error.code).toBe('auth_unavailable');
+  });
+
+  describe('when Supabase Auth itself is failing', () => {
+    let server: Server | undefined;
+    afterEach(() => server?.close());
+
+    // A real JWKS endpoint that misbehaves, fetched by jose's own remote key set.
+    async function jwksAnswering(status: number, body: string): Promise<JWTVerifyGetKey> {
+      server = createServer((_req, res) => res.writeHead(status, { 'Content-Type': 'application/json' }).end(body));
+      await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
+      const { port } = server.address() as AddressInfo;
+      return createRemoteJWKSet(new URL(`http://127.0.0.1:${port}/auth/v1/.well-known/jwks.json`));
+    }
+
+    it.each([
+      ['a 5xx', 503, '{"message":"upstream down"}'],
+      ['an HTML error page', 200, '<html>bad gateway</html>'],
+      ['a body that is not a key set', 200, '{"hello":"world"}'],
+    ])('answers 503, not 401, on %s from the JWKS endpoint', async (_name, status, body) => {
+      const res = await request(app(undefined, await jwksAnswering(status, body)))
+        .get('/whoami')
+        .set('Authorization', `Bearer ${await token()}`);
+      expect(res.status).toBe(503);
+      expect(res.body.error.code).toBe('auth_unavailable');
+    });
   });
 
   it('passes a database failure to the error handler as a 500', async () => {

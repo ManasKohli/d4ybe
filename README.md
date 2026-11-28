@@ -135,7 +135,7 @@ npm run check      # typecheck, lint, test, build; run before every push
 |---|---|---|
 | `DATABASE_URL` | Secret | Supabase **shared pooler**, transaction mode: `aws-*-ca-central-1.pooler.supabase.com:6543`. The direct host is IPv6-only, and Cloud Run can't reach it by default |
 | `SUPABASE_URL` | Secret | Project URL, bare origin (`https://<ref>.supabase.co`); token issuer and JWKS endpoint are derived from it |
-| `DATABASE_CA_CERT` | Secret | Optional. Supabase root CA (PEM); when set, the pooler's TLS certificate is verified |
+| `DATABASE_CA_CERT` | Secret | Supabase root CA (PEM), so the pooler's TLS certificate is verified. **Required in production** for a remote database; optional locally |
 | `SUPABASE_SECRET_KEY` | Secret | `sb_secret_…` key, for Storage and Auth admin only |
 | `STRIPE_SECRET_KEY` | Secret | Test mode until launch |
 | `STRIPE_WEBHOOK_SECRET` | Secret | From the Stripe dashboard, or from `stripe listen` locally |
@@ -168,7 +168,7 @@ Postgres on Supabase. Migrations live in `supabase/migrations/` and are the only
 
 - **Two projects:** dev/staging on the Free plan, production on **Pro** (never paused, daily backups kept 7 days).
 - **RLS is on for every table, with no policies, and `anon`/`authenticated` hold no grants.** A new table without RLS is a bug; `tests/db/security.test.ts` fails on one.
-- **Roles come only from `profiles`.** The signup trigger makes everyone a student, unless Supabase created the user through an invite (`auth.users.invited_at`) *and* an `invites` row matches. Sign-up metadata is ignored.
+- **Roles come only from `profiles`.** The signup trigger makes everyone a student. A matching `invites` row promotes the user only when Supabase's invite flow sets `auth.users.invited_at` on an account with no password yet, so a self-sign-up with an invited address never becomes staff. Sign-up metadata is ignored. Banned or deleted Auth users are refused on every request, without waiting for their token to expire.
 - **`credit_ledger` and `audit_log` are append-only** (corrections are new rows), and a balance can't go below zero.
 - **Index every foreign key you filter on.**
 - After each migration, run `npm run db:types` and `npm run openapi` if response shapes changed.
